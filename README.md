@@ -31,7 +31,7 @@ flowchart LR
 
 | 能力 | QQ | 微信 |
 |---|---|---|
-| 本人文字私聊收/发 | 实现，待真人验收 | 实现，待真人验收 |
+| 本人文字私聊收/发 | 旧受限测试入口已由原 dot 往返并确认实收；新 portable 入口待真人验收 | 旧受限测试入口已由原 dot 往返并确认实收；新 portable 入口待真人验收 |
 | 本人稳定身份绑定 | `user_openid` + bot App ID | `from_user_id` + `to_user_id` bot ID |
 | ack / final | 被动回复 `msg_id` / `msg_seq=1,2` | 原消息 `context_token`，每条一个 item |
 | 入站图片/PDF | **不支持，拒绝附件** | PNG/JPEG/PDF，实现 CDN 解密和模拟测试 |

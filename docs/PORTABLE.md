@@ -13,7 +13,7 @@
 
 ## 连接步骤
 
-1. 从私有仓库成功 CI 的 `dot-im-connect-Windows-x64` / `dot-im-connect-Linux-x64` artifact 获取可执行文件、SHA256 和构建信息。只在私有仓库中交付，不公开发布。
+1. 先核对实际交付位置。**当前 CI 的测试、构建和自检已通过，但 artifact 上传被 GitHub 存储配额阻塞，不能从该运行下载二进制。** 已有 Windows 本地交付位于项目目录 `dist/dot-im-connect-win32-x64.exe`，同目录提供 `.sha256` 和 `.build.json`。Linux 文件可在已授权的隔离 Linux 目录按下方维护者构建步骤生成并自检，再复制回 `dist/`；尚未成功生成时不能宣称已有可下载文件。配额恢复后，才使用私有仓库 CI 的 `dot-im-connect-Windows-x64` / `dot-im-connect-Linux-x64` artifact。均需核对 SHA256 和源码提交，不公开发布。
 2. 先运行 `dot-im-connect --self-test`。仅验证内置运行时、SQLite、官方客户端能启动及临时目录清理，不连接账号。
 3. 在本人终端运行程序。Windows 默认打开页面；Linux 可用 `./dot-im-connect-linux-x64 --port 8789 --no-browser`。笔记本使用既有受信 SSH 配置建立 `ssh -N -L 127.0.0.1:8789:127.0.0.1:8789 <已核实的服务器别名>`。页面能力链接只由本人从终端打开，不贴聊天、不截图给 Agent。端口已占用时选择另一个端口，两端保持一致。
 4. 选择渠道，输入已有 Tunnel ID、组织 ID、仅 Read+Use 的运行密钥。QQ 另需自己的官方机器人 AppID/AppSecret；用本人 QQ 发随机验证文字，再在独立本机页面确认对应稳定 ID。微信用本人手机扫码，身份来自官方确认返回；验证码只在本机页面输入。
