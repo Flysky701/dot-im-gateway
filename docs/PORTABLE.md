@@ -13,12 +13,14 @@
 
 ## 连接步骤
 
-1. 先核对实际交付位置。**当前 CI 的测试、构建和自检已通过，但 artifact 上传被 GitHub 存储配额阻塞，不能从该运行下载二进制。** 已有 Windows 本地交付位于项目目录 `dist/dot-im-connect-win32-x64.exe`，同目录提供 `.sha256` 和 `.build.json`。Linux 文件可在已授权的隔离 Linux 目录按下方维护者构建步骤生成并自检，再复制回 `dist/`；尚未成功生成时不能宣称已有可下载文件。配额恢复后，才使用私有仓库 CI 的 `dot-im-connect-Windows-x64` / `dot-im-connect-Linux-x64` artifact。均需核对 SHA256 和源码提交，不公开发布。
+1. 先核对实际交付位置。**当前 CI 的测试、构建和自检已通过，但 artifact 上传被 GitHub 存储配额阻塞，不能从该运行下载二进制。** 维护者本地交付位于项目目录 `dist/dot-im-connect-win32-x64.exe` 和 `dist/dot-im-connect-linux-x64`，同目录提供 `.sha256` 和 `.build.json`。Linux 文件已在隔离 Linux 目录实际自检，另有 `.verification.json`；这些本地文件不会因仓库源码链接而自动可下载，请取得维护者交付或按下方步骤构建。配额恢复后，才使用私有仓库 CI 的 `dot-im-connect-Windows-x64` / `dot-im-connect-Linux-x64` artifact。均需核对 SHA256 和源码提交，不公开发布。
 2. 先运行 `dot-im-connect --self-test`。仅验证内置运行时、SQLite、官方客户端能启动及临时目录清理，不连接账号。
 3. 在本人终端运行程序。Windows 默认打开页面；Linux 可用 `./dot-im-connect-linux-x64 --port 8789 --no-browser`。笔记本使用既有受信 SSH 配置建立 `ssh -N -L 127.0.0.1:8789:127.0.0.1:8789 <已核实的服务器别名>`。页面能力链接只由本人从终端打开，不贴聊天、不截图给 Agent。端口已占用时选择另一个端口，两端保持一致。
-4. 选择渠道，输入已有 Tunnel ID、组织 ID、仅 Read+Use 的运行密钥。QQ 另需自己的官方机器人 AppID/AppSecret；用本人 QQ 发随机验证文字，再在独立本机页面确认对应稳定 ID。微信用本人手机扫码，身份来自官方确认返回；验证码只在本机页面输入。
+4. 选择渠道，输入已有 Tunnel ID、组织 ID、仅 Read+Use 的运行密钥。缺少时使用页面中的官方直达链接；账号需对应原 dot，不创建另一个 Agent。QQ 另需自己的官方机器人 AppID/AppSecret；用本人 QQ 发随机验证文字，再在独立本机页面确认对应稳定 ID。微信无需 AppID/AppSecret，用本人手机扫描本程序取得的官方二维码，身份来自官方确认返回；验证码只在本机页面输入。是否需要 QQ 测试用户或微信资格，以本人控制台/手机实际提示为准。
 5. 原 dot 通过同一私人插件发现 `gateway_status`、`list_pending`、`read_message`、`reply`。发送本人文字，让原 dot 读取、ack、final，并在手机确认收到。新包装入口的本地/CI 自检不能代替这次验收。
 6. 点击“完成并关闭连接页面”，临时 HTTP 配置入口停止监听，传输进程继续运行。按 Ctrl+C 停止并看到清理结果。没有脱离终端、安装自启或系统服务；SSH 断开也可能结束服务器上的前台程序。
+
+页面底部“让 Agent 帮忙 / 可选服务器”提供两句复制指令；也可从 [README](../README.md) 复制。默认走本机，不需要购买服务器。服务器部署与全流程辅助共用本程序和既有部署脚本，不提供额外 Skill 安装包。Agent 只能使用实际可用且授权的浏览器/工具，无法自动完成的步骤由本人接手。
 
 ## 当前边界
 

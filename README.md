@@ -8,7 +8,27 @@
 
 **验收状态：2026-10-22 原 dot 经私人 Tunnel 完成 QQ、微信本人文字的手动 ack/final 往返，用户分别确认客户端实收。** [脱敏验收记录](docs/TEXT_ACCEPTANCE_2026-10-22.md)。Events 自动触发、微信媒体真人收发、常驻及真实故障恢复仍待独立验收。默认 `mode=offline`，平台关闭，订阅门关闭。安装不扫码、不生成账号凭据、不创建 Tunnel、不创建真实订阅。
 
-## 消息路径
+## 从零连接 / 交给 Agent
+
+默认不需要服务器：运行 Windows EXE → 选 QQ 或微信 → 按缺项打开官方账号/Tunnel 页面 → 在本机安全输入 → 本人确认绑定 → 原 dot 读写一条文字并在手机确认。微信直接使用官方扫码，不需要微信 AppID/AppSecret；QQ 需要自己管理的官方机器人。连接页关闭后，传输程序仍需运行，电脑休眠或程序退出后不会继续在线。具体见[单文件使用说明](docs/PORTABLE.md)。
+
+可直接复制下面任一句给 Agent，不必另装 Skill 包。**仓库是私有的，Agent 必须已有访问权限；无法访问时需提供授权或文件，不会自动公开仓库。** Agent 按实际工具能力操作，不能自动完成的登录、扫码或确认步骤再交给本人。
+
+全流程辅助：
+
+```text
+请下载并使用这个全流程辅助 Skill：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/connect-dot-im-gateway/SKILL.md ，帮我把 QQ 或微信连接到已有的 dot，优先本机免服务器方案。遇到需要登录、扫码或授权时再叫我。
+```
+
+已有服务器：
+
+```text
+请下载并使用这个服务端部署 Skill：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/deploy-dot-im-gateway/SKILL.md ，用我已有的服务器连接配置，在我确认的目标上部署。遇到需要登录、扫码或授权时再叫我。
+```
+
+服务器是可选运行位置；默认前台连接程序不会自动变成脱离终端的常驻服务。如另需常开部署，复用既有部署脚本，在具体确认后配置凭据和进程启动方式。当前不自动开通 Events 来信唤醒。
+
+## 消息路径（模块化服务；便携入口关闭 Events）
 
 ```mermaid
 flowchart LR
@@ -85,7 +105,7 @@ ack 被明确拒绝或取消时，其排队 final 会取消；ack 为 uncertain 
 
 - `config init`、`doctor`、`status`、`logs`、`backup`、`restore`、`reconcile`、`upgrade`、`rollback`、`uninstall`：见 [运维手册](docs/OPERATIONS.md)。
 - 可重复部署与升级脚本：`python3 scripts/deploy.py --help`，默认只输出计划；卸载保留数据、配置、凭据、备份和历史版本。
-- 官方 tunnel-client 单独下载安装与运行；不捆绑、不改写它的控制协议。
+- 模块化服务方式单独下载安装官方 tunnel-client；便携文件内置经过校验的官方客户端，解包后作为独立子进程运行，不改写它的控制协议。
 - 上游固定版本、许可证与借鉴内容：[第三方声明](THIRD_PARTY_NOTICES.md)、[参考审查](docs/UPSTREAM.md)、`references.lock.json`。
 - 本地及 CI 证据：[验证记录](docs/VALIDATION.md)。下一阶段逐项完成 [用户环境验收清单](docs/ACCEPTANCE.md)。
 
