@@ -1,0 +1,46 @@
+{
+  "reviewed_at": "2026-10-22",
+  "references": [
+    {
+      "repository": "Arcueid77/dot-qq-bridge",
+      "commit": "b403176c980d460ecffa87dcd722dd8740fb6c37",
+      "license": "MIT",
+      "vendored": false
+    },
+    {
+      "repository": "cd233ljx/wechat-dot-bridge",
+      "commit": "67c726e15ae2de8b60d293d6f5e81107bd0b6ebc",
+      "license": "MIT",
+      "vendored": false
+    },
+    {
+      "repository": "RerrentLinden/dots-wechat-bridge",
+      "commit": "b00ebf8ae009556959917bdc802a8ed202e28d1e",
+      "license": "MIT",
+      "vendored": false
+    },
+    {
+      "repository": "Tencent/openclaw-weixin",
+      "commit": "874637a0dbc24050f72d1385add4fc6170a2d726",
+      "license": "MIT",
+      "vendored": false
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "commit": "4e58c721c8cf9b51c46636ea84ea6a5cb540880a",
+      "license": "MIT",
+      "vendored": false
+    }
+  ],
+  "protocols": [
+    {
+      "url": "https://developers.openai.com/plugins/build/mcp-events",
+      "version": "2026-07-28",
+      "reviewed_at": "2026-10-22"
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels",
+      "reviewed_at": "2026-10-22"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Official OpenAI tunnel-client for dot IM gateway
+After=network-online.target dot-im-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace absolute paths after reviewing the official binary and profile.
+ExecStart=/ABSOLUTE/official/tunnel-client run --profile dot-im-gateway
+EnvironmentFile=/ABSOLUTE/private/tunnel-runtime.env
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

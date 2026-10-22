@@ -1,8 +1,11 @@
 node_modules/
 runtime/
-config.json
 *.sqlite*
 *.env
+*.tar
 *.tgz
 *.zip
+.DS_Store
+coverage/
+config.json
 __pycache__/

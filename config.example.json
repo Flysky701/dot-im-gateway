@@ -1,0 +1,31 @@
+{
+  "mode": "offline",
+  "host": "127.0.0.1",
+  "port": 8788,
+  "dataDir": "./runtime",
+  "principal": "owner",
+  "tokenEnv": "DOT_GATEWAY_TOKEN",
+  "allowSubscriptions": false,
+  "callbackHosts": [],
+  "maxMediaBytes": 4194304,
+  "maxStoredMediaBytes": 268435456,
+  "mediaRetentionHours": 168,
+  "qq": {
+    "enabled": false,
+    "ownerId": "",
+    "appId": "",
+    "secretEnv": "DOT_QQ_SECRET",
+    "apiProfile": "documented",
+    "gatewayHosts": [],
+    "replyTtlMs": 240000
+  },
+  "weixin": {
+    "enabled": false,
+    "ownerId": "",
+    "botId": "",
+    "tokenEnv": "DOT_WEIXIN_TOKEN",
+    "apiHost": "ilinkai.weixin.qq.com",
+    "cdnHost": "novac2c.cdn.weixin.qq.com",
+    "replyTtlMs": 86400000
+  }
+}

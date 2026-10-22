@@ -1,0 +1,10 @@
+{
+  "name": "dot-im-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24.21.0 <25"},
+  "bin": {"dot-im-gateway": "bin/gateway.js"},
+  "scripts": {"test": "node --test", "start": "node bin/gateway.js serve", "check": "node scripts/check.js"},
+  "license": "MIT"
+}

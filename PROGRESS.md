@@ -1,0 +1,14 @@
+# 阶段记录
+
+- 2026-10-22：独立空目录开始；检查进程与任务，不修改其他项目。
+- 已核实 GitHub 身份 Flysky701，同名仓库不存在；通过已登录官方网页创建私有仓库，连接器复核 visibility=private。
+- 阅读 OpenAI MCP Events / Secure MCP Tunnel 最新文档。协议采用 2026-07-28。
+- 五个参考项目固定 commit；核实 QQ 扫码依赖 UNLICENSED 边界，不包含或安装该包。
+- 实现阶段：Node.js 24 内置模块、SQLite 队列、独立 QQ/微信适配器；所有真实接入默认关闭。
+- 本阶段不扫码、不获取账号凭据、不创建 Tunnel、不创建真实订阅、不改变服务器设置。
+- 已写入可运行模块：src/{config,util,network,store,media,events,core,server,runtime,operations}.js，adapters/{qq,qq-gateway,weixin}.js，bin/gateway.js。
+- 已写入 scripts/deploy.py、部署 Skill、中文 README/架构/安全/运维/参考审查/真人验收文档、CI workflow。
+- 第一轮 Node tests：37/37 通过，包括真实 loopback HTTP。初始沙箱 EACCES 经仅限本项目回环测试的自动审查批准后解决，没有修改网络设置。
+- 追加 standalone service lifecycle 与订阅撤销竞争测试；部署 dry-run 临时路径问题修复中；Linux apply 生命周期留给 Linux CI 验证。
+- 远端私有仓库已初始化，commit 2941f7c4031da68b0c16fd430f22ce01899b28ee；完整切片待上传，不是空设计任务。
+- 原 Skill validator 缺 PyYAML，替代的无依赖 frontmatter/引用路径检查通过；未声称原 validator 通过。
