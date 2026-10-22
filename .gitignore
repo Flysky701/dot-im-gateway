@@ -1,0 +1,8 @@
+node_modules/
+runtime/
+config.json
+*.sqlite*
+*.env
+*.tgz
+*.zip
+__pycache__/
