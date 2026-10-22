@@ -22,6 +22,9 @@ test('connection pins public DNS resolution and rejects mixed DNS answers',async
 test('config refuses public listeners and extra credential fields',t=>{
   const f=fixture(t);validate(f.c);assert.throws(()=>validate({...f.c,host:'0.0.0.0'}));assert.throws(()=>validate({...f.c,apiKey:'not-allowed'}));
 });
+test('stalled DNS resolution is bounded before any request can be sent',async()=>{
+  await assert.rejects(pinnedOptions('https://callback.example.com',['callback.example.com'],()=>new Promise(()=>{}),5),e=>e.code==='dns_timeout'&&e.kind==='retry');
+});
 test('media rejects arbitrary paths, type/size violations, and cleanup protects unresolved sends',async t=>{
   const f=fixture(t),m=await accept(f,'weixin');assert.throws(()=>f.media.get('../../secrets',m.id));assert.throws(()=>f.media.put(m.id,Buffer.from('executable'),'application/pdf'));
   const b=Buffer.from('%PDF-1.4\n%%EOF'),file=f.media.put(m.id,b,'application/pdf');assert.throws(()=>f.media.get(file.id,'another-message'));

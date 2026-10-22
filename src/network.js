@@ -15,9 +15,14 @@ export function safeURL(raw, hosts, protocol='https:') {
   ensure(u.protocol===protocol && !u.username && !u.password && !u.hash && (!u.port || u.port==='443') && hosts.includes(u.hostname) && !net.isIP(u.hostname),'destination_denied');
   return u;
 }
-export async function pinnedOptions(raw, hosts, resolver = dns.lookup) {
+export async function pinnedOptions(raw, hosts, resolver = dns.lookup, timeout = 10000) {
   const u=safeURL(raw,hosts);
-  const addresses=await resolver(u.hostname,{all:true,family:4});
+  let timer,addresses;
+  try{
+    addresses=await Promise.race([resolver(u.hostname,{all:true,family:4}),new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(new Fault('dns_timeout','retry')),timeout);
+    })]);
+  }finally{clearTimeout(timer);}
   ensure(addresses.length>0 && addresses.every(x=>publicIPv4(x.address)),'non_public_destination');
   const address=addresses[0].address;
   return {u,options:{hostname:u.hostname,port:443,path:u.pathname+u.search,servername:u.hostname,family:4,autoSelectFamily:false,

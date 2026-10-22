@@ -1,6 +1,13 @@
 import http from 'node:http';
 import {same,ensure,str,exact,Fault,parseJson} from './util.js';
 export const VERSION='2026-07-28';
+function nameHeader(value){
+  ensure(typeof value==='string','header_mismatch');
+  if(!value.startsWith('=?base64?')||!value.endsWith('?='))return value;
+  const encoded=value.slice(9,-2),bytes=Buffer.from(encoded,'base64');
+  ensure(bytes.toString('base64')===encoded,'header_mismatch');
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw new Fault('header_mismatch');}
+}
 const s={type:'string',minLength:1};
 const schema=(properties={},required=Object.keys(properties))=>({type:'object',properties,required,additionalProperties:false});
 export const tools=[
@@ -70,12 +77,13 @@ export function makeServer(rpc,token){
       const chunks=[];let size=0;for await(const b of req){size+=b.length;if(size>6000000)throw new Fault('body_limit');chunks.push(b);}
       let j;try{j=parseJson(Buffer.concat(chunks));}catch{reply(400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});return;}
       ensure(j&&j.jsonrpc==='2.0'&&!Array.isArray(j)&&typeof j.method==='string'&&(typeof j.id==='string'||Number.isSafeInteger(j.id)),'invalid_request');id=j.id;
+      ensure(req.headers['mcp-protocol-version']&&req.headers['mcp-method'],'header_mismatch');
       const p=j.params||{},meta=p._meta;
       ensure(meta&&typeof meta==='object'&&meta['io.modelcontextprotocol/clientInfo']?.name&&meta['io.modelcontextprotocol/clientInfo']?.version&&meta['io.modelcontextprotocol/clientCapabilities']&&typeof meta['io.modelcontextprotocol/clientCapabilities']==='object','missing_metadata');
       const version=meta['io.modelcontextprotocol/protocolVersion'];
       if(version!==VERSION){reply(400,{jsonrpc:'2.0',id,error:{code:-32022,message:'Unsupported protocol version',data:{supported:[VERSION],requested:version??null}}});return;}
       ensure(req.headers['mcp-protocol-version']===version&&req.headers['mcp-method']===j.method,'header_mismatch');
-      if(['tools/call','resources/read'].includes(j.method))ensure(req.headers['mcp-name']===(p.name||p.uri),'header_mismatch');
+      if(['tools/call','resources/read'].includes(j.method))ensure(nameHeader(req.headers['mcp-name'])===(p.name||p.uri),'header_mismatch');
       const clean={...p};delete clean._meta;
       const result=await rpc.dispatch(j.method,clean);reply(200,{jsonrpc:'2.0',id,result:{resultType:'complete',...result}});
     }catch(e){

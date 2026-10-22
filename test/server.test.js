@@ -28,6 +28,16 @@ test('loopback request -> queued ack/final -> mock provider status, no real dot'
   for(const phase of ['ack','final']){const r=await call(f.port,'tools/call',{name:'reply',arguments:{message_id:m.id,phase,text:phase}});assert.equal(r.body.result.structuredContent.state,'pending');}
   await f.core.tick();assert.deepEqual(sent,['ack','final']);const done=await call(f.port,'tools/call',{name:'read_message',arguments:{message_id:m.id}});assert.ok(done.body.result.structuredContent.replies.every(r=>r.state==='accepted'));
 });
+test('Mcp-Name decodes base64 UTF-8 and rejects malformed or mismatched headers',async t=>{
+  const f=await setup(t),params={name:'gateway_status',arguments:{}};
+  const encoded='=?base64?'+Buffer.from(params.name).toString('base64')+'?=';
+  assert.equal((await call(f.port,'tools/call',params,{'Mcp-Name':encoded})).status,200);
+  for(const header of ['=?base64?%%%?=','=?base64?/w==?=','other-tool']){
+    const r=await call(f.port,'tools/call',params,{'Mcp-Name':header});assert.equal(r.body.error.code,-32020);
+  }
+  const missing=await call(f.port,'tools/list',{}, {'MCP-Protocol-Version':''});assert.equal(missing.body.error.code,-32020);
+  const version=await call(f.port,'tools/list',{_meta:{...meta,'io.modelcontextprotocol/protocolVersion':'2025-11-25'}},{'MCP-Protocol-Version':'2025-11-25'});assert.equal(version.body.error.code,-32022);
+});
 test('media tools expose opaque handles, never raw paths or secrets',async t=>{
   const f=await setup(t),m=await accept(f,'weixin');const b=Buffer.from('%PDF-1.4\n%%EOF');
   const put=await f.rpc.dispatch('tools/call',{name:'put_media',arguments:{message_id:m.id,mime:'application/pdf',data_base64:b.toString('base64')}});assert.equal(put.isError,false);

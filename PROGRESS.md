@@ -12,3 +12,6 @@
 - 追加 standalone service lifecycle 与订阅撤销竞争测试；部署 dry-run 临时路径问题修复中；Linux apply 生命周期留给 Linux CI 验证。
 - 远端私有仓库已初始化，commit 2941f7c4031da68b0c16fd430f22ce01899b28ee；完整切片待上传，不是空设计任务。
 - 原 Skill validator 缺 PyYAML，替代的无依赖 frontmatter/引用路径检查通过；未声称原 validator 通过。
+- 05:06 UTC：完整实现已提交 `7f8ff4a63c7bfccb5288ff8f993919e470b6d48a`，私有仓库 https://github.com/Flysky701/dot-im-gateway 。CI https://github.com/Flysky701/dot-im-gateway/actions/runs/39726056415 的 Linux / Windows 均成功；Linux 隔离安装、重复安装、升级、回滚、卸载保留数据测试通过。
+- 收尾：补齐 MCP 编码名称请求头、缺失请求头与版本错误测试，以及 DNS 解析超时；更新验证文档后提交并核验最终 SHA 的 CI。部署 dry-run 临时路径问题已修复，没有挂起的安装或真实平台动作。
+- 当前边界：本机和 CI 均为离线/模拟/本地回环验证；真实原 dot、官方 Tunnel、订阅与真人 QQ/微信收发等待用户环境。没有获取长期账号凭据。
