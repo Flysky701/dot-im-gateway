@@ -78,7 +78,7 @@ function call(url,bearer,method,params={}){
   return new Promise((resolve,reject)=>{
     const req=http.request(url,{method:'POST',headers:{Authorization:`Bearer ${bearer}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream','MCP-Protocol-Version':VERSION,'Mcp-Method':method,...(params.name?{'Mcp-Name':params.name}:{})}},res=>{
       let data='';res.on('data',b=>data+=b);res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(data)}));
-    });req.on('error',reject);req.end(JSON.stringify({jsonrpc:'2.0',id:1,method,params:{_meta:meta,...params}}));
+    });req.setTimeout(2000,()=>req.destroy(new Error('test_request_timeout')));req.on('error',reject);req.end(JSON.stringify({jsonrpc:'2.0',id:1,method,params:{_meta:meta,...params}}));
   });
 }
 test('isolated session binds, receives once, sends ack/final via mock QQ, and closes on EOF',async t=>{
@@ -127,14 +127,18 @@ test('unconfirmed session times out, never creates database or listener, abort c
   assert.equal(closed,true);assert.equal(fs.existsSync(dir),false);assert.ok(!events.some(e=>e.stage==='gateway_ready'));
   const abort=new AbortController();abort.abort();await assert.rejects(request('https://never.invalid',{hosts:['never.invalid'],signal:abort.signal}),/request_cancelled/);
 });
-test('bound session also expires without a stop command and closes its listener',async t=>{
+test('bound session also expires without a stop command and closes its listener',{timeout:10000},async t=>{
   const f=fixture(t),commands=new EventEmitter(),events=[];let adapter,resolveGateway,readyResolve;
   const ready=new Promise(r=>{readyResolve=r;});
   class FakeGateway{constructor(a){adapter=a;}run(){adapter.receive({op:0,t:'READY',s:1,d:{}});return new Promise(r=>{resolveGateway=r;});}stop(){resolveGateway?.();}}
-  const token='b'.repeat(40),input={appId:'app',expectedOwner:'',secret:'s'.repeat(32),bearer:token,dataDir:path.join(f.dir,'bounded'),gatewayHosts:['api.bot.qq.com'],maximumSeconds:1};
-  const running=runQQTest(input,{commands,Gateway:FakeGateway,wall:()=>now,send:()=>assert.fail('network forbidden'),emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);}});
+  // CI scheduling and synchronous SQLite setup can consume the original one-second
+  // window before listen's callback. Bound both the setup wait and whole test so
+  // an early session end fails explicitly instead of waiting forever for READY.
+  const abort=new AbortController();t.after(()=>abort.abort());
+  const token='b'.repeat(40),input={appId:'app',expectedOwner:'',secret:'s'.repeat(32),bearer:token,dataDir:path.join(f.dir,'bounded'),gatewayHosts:['api.bot.qq.com'],maximumSeconds:5};
+  const running=runQQTest(input,{commands,signal:abort.signal,Gateway:FakeGateway,wall:()=>now,send:()=>assert.fail('network forbidden'),emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);}});
   adapter.receive(packet(events.find(e=>e.stage==='binding_challenge').challenge));commands.emit('line','CONFIRM app qq-owner-stable');
-  const url=await ready;assert.equal((await call(url,token,'tools/list')).status,200);
+  const url=await Promise.race([ready,running.then(()=>{throw new Error('session_ended_before_test_ready');})]);assert.equal((await call(url,token,'tools/list')).status,200);
   await running;await assert.rejects(call(url,token,'tools/list'));assert.equal(input.secret,'');
 });
 test('real gateway loop reports synthetic auth status and stops on first failure without leaking body',async t=>{

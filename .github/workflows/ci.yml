@@ -6,6 +6,7 @@ permissions:
   contents: read
 jobs:
   offline:
+    timeout-minutes: 5
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -23,6 +24,7 @@ jobs:
       - run: npm test
       - run: python -m unittest discover -s test -p '*_test.py' -v
   portable:
+    timeout-minutes: 10
     needs: offline
     strategy:
       matrix:
