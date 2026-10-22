@@ -9,3 +9,6 @@ runtime/
 coverage/
 config.json
 __pycache__/
+dist/
+packaging/cache/
+packaging/work/

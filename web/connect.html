@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dot · 连接一次</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main><header>dot <span>／ 连接一次</span></header><h1>把消息带给你的 dot</h1><p class="intro">选一个渠道，连接完成就关掉这个页面。断开后重新运行程序。</p>
+<form id="setup"><div class="channels"><label><input type="radio" name="platform" value="qq" checked> QQ</label><label><input type="radio" name="platform" value="weixin"> 微信</label></div>
+<div id="qq-fields"><label>机器人 AppID<input name="appId" autocomplete="off" maxlength="128" required></label><label>机器人 AppSecret<input name="secret" type="password" autocomplete="off" maxlength="1024" required></label></div>
+<details open><summary>已有私人 Tunnel</summary><label>Tunnel ID<input name="tunnelId" autocomplete="off" placeholder="tunnel_…" required maxlength="128"></label><label>组织 ID<input name="organizationId" autocomplete="off" placeholder="org-…" required maxlength="128"></label><label>运行密钥 · 仅 Tunnels Read＋Use<input name="runtimeKey" type="password" autocomplete="off" required maxlength="1024"></label></details>
+<label class="consent"><input name="confirmed" type="checkbox" required> 本次仅连接我本人的文字私聊；密钥只留内存，不开事件订阅，不保存凭据或设自启。</label><button id="connect" type="submit">连接</button></form>
+<section id="flow" hidden><div class="step" id="step" role="status">正在连接…</div><p id="instruction"></p><pre id="challenge" hidden></pre><img id="qr" alt="请用本人微信扫描" hidden>
+<form id="confirm" hidden><label id="confirm-label" for="answer">确认</label><input id="answer" autocomplete="off" required maxlength="300"><button>确认继续</button></form>
+<div id="complete" hidden><p>请让原 dot 调用私人插件读取并回复一条消息，再在手机确认收到。客户端启动不等于原 dot 已完成验收。</p><button id="finish" type="button">完成并关闭连接页面</button></div>
+<button id="stop" class="quiet" type="button">停止本次连接</button></section>
+<p id="error" role="alert"></p><footer>桥接进程需要保持运行。关闭终端会断开；不安装后台管理服务。<br>退出清理临时消息；微信侧绑定需要你在手机上自行断开。</footer></main></body></html>

@@ -7,9 +7,10 @@
 - `@tencent-connect/qqbot-connector@1.2.0`：上游 THIRD_PARTY_NOTICES 记录 package metadata 为 **UNLICENSED**，没有独立 LICENSE；本项目不依赖、不安装、不复制、不分发它。任何后续扫码集成都要单独核对授权范围。
 - cd233ljx/wechat-dot-bridge、RerrentLinden/dots-wechat-bridge：各自 MIT；阅读其 NOTICE，保留参考许可证，未打包其 Python 依赖或音频组件。
 - NousResearch/hermes-agent：MIT，Copyright (c) 2025 Nous Research；只参考 SessionSource 会话来源设计，不引入 Hermes 运行时。
-- Node.js 24（含 SQLite、OpenSSL 等组件）由操作员从官方发行版安装，保留官方发行包全部许可证。项目没有第三方 npm 运行依赖。Python 3 部署脚本仅使用标准库。
+- 模块化源码模式需要 Node.js 24，Python 3 部署脚本仅使用标准库。便携单文件内置官方 Node.js 24.21.0（含 SQLite、OpenSSL 等），保留完整官方 LICENSE，可通过 `--licenses` 查看；用户无需安装语言运行时。
 - 微信临时测试的终端二维码渲染使用未修改 `qrcode 8.2` 官方 PyPI wheel，BSD-3-Clause，含原 QR 算法 MIT 署名；完整许可及固定 SHA256 见 vendor/。只从 wheel 加载，不执行安装脚本或改变系统 Python，不需要 Pillow。该依赖不用于主服务或部署脚本。
-- OpenAI tunnel-client 从 https://github.com/openai/tunnel-client/releases/latest 独立安装，遵从其发行包 LICENSE/NOTICE；本项目既不分发也不重新许可该客户端。
+- 便携单文件内置未修改的 OpenAI tunnel-client 0.0.17 官方平台二进制，Apache-2.0，保留原 LICENSE、NOTICE 和对应平台依赖许可报告；运行时校验后临时解包，仍作为独立进程。固定下载 SHA256 见 `packaging/fetch.py`。不打包官方发行 ZIP 中的 cloudflared 可执行文件，不重新许可官方客户端。
+- 便携页面内置 qrcode-generator 2.0.4，MIT，Copyright (c) 2009 Kazuhiko Arase；许可见 `licenses/qrcode-generator-MIT.txt`。它在本机生成二维码，不调用第三方二维码服务。构建工具 esbuild 0.25.12 / postject 1.0.0-alpha.6 均 MIT，只在构建机器使用，版本和完整性由 packaging/package-lock.json 固定，安装不运行 package scripts。
 - Standard Webhooks 签名格式按公开协议自行实现，没有复制库源代码。MCP/OpenAI 文档仅为协议依据，不复制其文档全文。
 
 项目为私人部署准备，源代码许可不授予微信、QQ、OpenAI 服务访问权限或替代相关平台条款。无任何厂商背书。

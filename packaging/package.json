@@ -1,0 +1,1 @@
+{"name":"dot-im-gateway-build-tools","private":true,"type":"module","dependencies":{"esbuild":"0.25.12","postject":"1.0.0-alpha.6","qrcode-generator":"2.0.4"}}

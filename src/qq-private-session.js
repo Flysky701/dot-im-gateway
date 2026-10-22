@@ -57,16 +57,16 @@ export class QQTestRPC {
   }
 }
 
-export function validateTestInput(input){
+export function validateTestInput(input,{untilStopped=false}={}){
   exact(input,['appId','expectedOwner','secret','bearer','dataDir','gatewayHosts','maximumSeconds']);
   ensure(identity(input.appId)&&(!input.expectedOwner||identity(input.expectedOwner)),'invalid_identity');
   for(const key of ['secret','bearer'])ensure(typeof input[key]==='string'&&input[key].length>=(key==='secret'?16:32)&&input[key].length<=1024&&!/[\r\n]/.test(input[key]),'invalid_secret_shape');
   ensure(Array.isArray(input.gatewayHosts)&&input.gatewayHosts.length>0&&input.gatewayHosts.length<=4&&input.gatewayHosts.every(h=>/^(?:[a-z0-9-]+\.)+qq\.com$/.test(h)),'invalid_gateway_hosts');
-  str(input.dataDir,2048);ensure(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800,'invalid_test_duration');return input;
+  str(input.dataDir,2048);ensure((untilStopped&&input.maximumSeconds===0)||(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800),'invalid_test_duration');return input;
 }
 
-export async function runQQTest(input,{emit,commands,signal,send=request,Gateway=QQGateway,clock=()=>performance.now(),wall=Date.now}={}){
-  validateTestInput(input);const end=clock()+input.maximumSeconds*1000;
+export async function runQQTest(input,{emit,commands,signal,send=request,Gateway=QQGateway,clock=()=>performance.now(),wall=Date.now,untilStopped=false}={}){
+  validateTestInput(input,{untilStopped});const end=input.maximumSeconds===0?Infinity:clock()+input.maximumSeconds*1000;
   const binding=new OwnerChallenge(input.appId,{expectedOwner:input.expectedOwner,clock,wall});
   let stopped=false,store,server,core,worker,gateway,loop,challengeShown=false;let stopResolve;
   const stopping=new Promise(resolve=>{stopResolve=resolve;});
@@ -109,8 +109,8 @@ export async function runQQTest(input,{emit,commands,signal,send=request,Gateway
     // Only validated, bound text reaches the durable inbox.
     QQ.prototype.receive.call(qq,p);
   };
-  const timer=setTimeout(stop,input.maximumSeconds*1000);
-  const bindTimer=setTimeout(()=>{if(!binding.owner){emit({stage:'failed',code:'binding_timeout'});stop();}},Math.min(120000,input.maximumSeconds*1000));
+  const timer=input.maximumSeconds?setTimeout(stop,input.maximumSeconds*1000):null;
+  const bindTimer=setTimeout(()=>{if(!binding.owner){emit({stage:'failed',code:'binding_timeout'});stop();}},Math.min(120000,input.maximumSeconds?input.maximumSeconds*1000:120000));
   const commandListener=line=>{
     if(line==='STOP'){stop();return;}
     if(!active())return;

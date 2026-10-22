@@ -83,17 +83,17 @@ export class WeixinTestRPC{
   }
 }
 
-export async function runWeixinTest(input,{emit,commands,signal,send=request,clock=()=>performance.now(),wall=Date.now,login=loginWeixin}={}){
+export async function runWeixinTest(input,{emit,commands,signal,send=request,clock=()=>performance.now(),wall=Date.now,login=loginWeixin,untilStopped=false}={}){
   exact(input,['bearer','dataDir','maximumSeconds']);str(input.dataDir,2048);str(input.bearer,1024);ensure(input.bearer.length>=32&&!/[\r\n]/.test(input.bearer),'invalid_secret_shape');
-  ensure(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800,'invalid_test_duration');
-  const abort=new AbortController(),end=clock()+input.maximumSeconds*1000;let credentials,store,server,core,polling,working,interval,verifyResolve,verifyReject,stopped=false,resolveStop;
+  ensure((untilStopped&&input.maximumSeconds===0)||(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800),'invalid_test_duration');
+  const abort=new AbortController(),end=input.maximumSeconds===0?Infinity:clock()+input.maximumSeconds*1000;let credentials,store,server,core,polling,working,interval,verifyResolve,verifyReject,stopped=false,resolveStop;
   const stopping=new Promise(r=>{resolveStop=r;});
   const active=()=>!stopped&&clock()<end;
   const stop=()=>{if(stopped)return;stopped=true;abort.abort();verifyReject?.(new Fault('test_stopped'));resolveStop();};
   const command=line=>{if(line==='STOP')return stop();if(verifyResolve){const resolve=verifyResolve;verifyResolve=verifyReject=null;resolve(line);}};
   const verification=()=>new Promise((resolve,reject)=>{verifyResolve=resolve;verifyReject=reject;emit({stage:'verify_code_required'});});
   commands.on('line',command);commands.once('close',stop);signal?.addEventListener('abort',stop,{once:true});
-  const timer=setTimeout(stop,input.maximumSeconds*1000);
+  const timer=input.maximumSeconds?setTimeout(stop,input.maximumSeconds*1000):null;
   const fail=e=>{if(active())emit({stage:'failed',code:e instanceof Fault?e.code:'weixin_test_failed'});stop();};
   try{
     if(signal?.aborted){stop();return;}
