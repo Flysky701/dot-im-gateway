@@ -13,8 +13,8 @@ test('official QR callback disables console branding override, clears source cre
   assert.equal(JSON.stringify(events).includes('synthetic-secret'),false);assert.deepEqual(events,[{stage:'qq_qr',content:qr}]);
 });
 test('QR rejects wrong app, multi-bot, malformed owner, unsafe URL and raw errors without disclosing details',async()=>{
-  for(const invoke of [c=>c.onSuccess([credential()]),c=>c.onSuccess([credential(),credential()]),c=>c.onSuccess([{...credential(),userOpenid:'bad/owner'}]),c=>c.onQrDisplayed('https://q.qq.com.evil.invalid/qr'),c=>c.onFailure(Error('RAW-SECRET'))]){
-    await assert.rejects(qqQrCredentials(c=>{invoke(c);return ()=>{};},{emit:()=>{},expectedAppId:'different'}),e=>!e.message.includes('RAW-SECRET'));
+  for(const [invoke,expectedAppId,code] of [[c=>c.onSuccess([credential()]),'different','qq_qr_app_mismatch'],[c=>c.onSuccess([credential(),credential()]),'app','qq_qr_selection_rejected'],[c=>c.onSuccess([{...credential(),userOpenid:'bad/owner'}]),'app','qq_qr_owner_rejected'],[c=>c.onQrDisplayed('https://q.qq.com.evil.invalid/qr'),'app','qq_qr_url_rejected'],[c=>c.onFailure(Error('RAW-SECRET')),'app','qq_qr_failed']]){
+    await assert.rejects(qqQrCredentials(c=>{invoke(c);return ()=>{};},{emit:()=>{},expectedAppId}),e=>e.code===code&&!e.message.includes('RAW-SECRET'));
   }
 });
 test('QR timeout, cancellation, expiry and late success stop once and never retain credentials',async()=>{
