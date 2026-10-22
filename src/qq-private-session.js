@@ -65,8 +65,9 @@ export function validateTestInput(input,{untilStopped=false}={}){
   str(input.dataDir,2048);ensure((untilStopped&&input.maximumSeconds===0)||(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800),'invalid_test_duration');return input;
 }
 
-export async function runQQTest(input,{emit,commands,signal,send=request,Gateway=QQGateway,clock=()=>performance.now(),wall=Date.now,untilStopped=false}={}){
+export async function runQQTest(input,{emit,commands,signal,send=request,Gateway=QQGateway,clock=()=>performance.now(),wall=Date.now,untilStopped=false,verifiedOwner=''}={}){
   validateTestInput(input,{untilStopped});const end=input.maximumSeconds===0?Infinity:clock()+input.maximumSeconds*1000;
+  ensure(!verifiedOwner||(identity(verifiedOwner)&&verifiedOwner===input.expectedOwner),'invalid_verified_owner');
   const binding=new OwnerChallenge(input.appId,{expectedOwner:input.expectedOwner,clock,wall});
   let stopped=false,store,server,core,worker,gateway,loop,challengeShown=false;let stopResolve;
   const stopping=new Promise(resolve=>{stopResolve=resolve;});
@@ -100,7 +101,8 @@ export async function runQQTest(input,{emit,commands,signal,send=request,Gateway
   qq.receive=p=>{
     if(!active())return;
     if(!challengeShown&&p?.op===0&&['READY','RESUMED'].includes(p.t)){
-      challengeShown=true;emit({stage:'binding_challenge',appId:input.appId,challenge:binding.challenge});
+      challengeShown=true;if(verifiedOwner){binding.owner=verifiedOwner;try{activateOwner(verifiedOwner);}catch{emit({stage:'failed',code:'binding_or_start_rejected'});stop();return;}}
+      else emit({stage:'binding_challenge',appId:input.appId,challenge:binding.challenge});
     }
     const checkpointIgnored=()=>{if(Number.isSafeInteger(p?.s))state.set('qq.seq',p.s);};
     if(!binding.owner){try{const candidate=binding.observe(p);if(candidate)emit({stage:'candidate',appId:input.appId,ownerId:candidate});checkpointIgnored();}catch{emit({stage:'failed',code:'binding_rejected'});stop();}return;}
@@ -111,11 +113,8 @@ export async function runQQTest(input,{emit,commands,signal,send=request,Gateway
   };
   const timer=input.maximumSeconds?setTimeout(stop,input.maximumSeconds*1000):null;
   const bindTimer=setTimeout(()=>{if(!binding.owner){emit({stage:'failed',code:'binding_timeout'});stop();}},Math.min(120000,input.maximumSeconds?input.maximumSeconds*1000:120000));
-  const commandListener=line=>{
-    if(line==='STOP'){stop();return;}
-    if(!active())return;
-    try{
-      c.qq.ownerId=binding.confirm(line);
+  const activateOwner=owner=>{
+      c.qq.ownerId=owner;
       store=new Store(input.dataDir);for(const [k,v] of mem)store.set(k,v);mem.clear();
       core=new Core(store,c,null,{qq},wall);
       server=makeServer(new QQTestRPC(core,active),input.bearer);
@@ -125,7 +124,11 @@ export async function runQQTest(input,{emit,commands,signal,send=request,Gateway
         emit({stage:'gateway_ready',url:`http://127.0.0.1:${server.address().port}/mcp`});
         loop=setInterval(()=>{if(active()&&!worker)worker=core.tick().catch(stop).finally(()=>{worker=null;});},250);
       });
-    }catch{emit({stage:'failed',code:'binding_or_start_rejected'});stop();}
+  };
+  const commandListener=line=>{
+    if(line==='STOP'){stop();return;}
+    if(!active())return;
+    try{activateOwner(binding.confirm(line));}catch{emit({stage:'failed',code:'binding_or_start_rejected'});stop();}
   };
   commands.on('line',commandListener);commands.once('close',stop);
   try{

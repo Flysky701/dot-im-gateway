@@ -148,3 +148,16 @@ test('real gateway loop reports synthetic auth status and stops on first failure
   assert.ok(events.some(e=>e.stage==='failed'&&e.code==='qq_token_rejected'));
   assert.equal(fs.existsSync(dir),false);assert.ok(!JSON.stringify(events).includes('DO-NOT-LOG'));
 });
+
+test('verified SDK owner binds on READY and rejects other senders without first-message claiming',{timeout:5000},async t=>{
+  const f=fixture(t),commands=new EventEmitter(),events=[];let adapter,finish,readyResolve;
+  const ready=new Promise(r=>readyResolve=r),abort=new AbortController();t.after(()=>abort.abort());
+  class Gateway{constructor(a){adapter=a;}run(){adapter.receive({op:0,t:'READY',s:1,d:{}});return new Promise(r=>finish=r);}stop(){finish?.();}}
+  const token='b'.repeat(40),input={appId:'app',expectedOwner:'qq-owner-stable',secret:'s'.repeat(32),bearer:token,dataDir:path.join(f.dir,'sdk-owner'),gatewayHosts:['api.bot.qq.com'],maximumSeconds:4};
+  const running=runQQTest(input,{commands,signal:abort.signal,Gateway,verifiedOwner:'qq-owner-stable',wall:()=>now,send:()=>assert.fail('network forbidden'),emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);}});
+  const url=await Promise.race([ready,running.then(()=>{throw Error('no_ready');})]);
+  adapter.receive(packet('not-owner','intruder','bad'));adapter.receive(qqRaw('own-message'));
+  let messages=[];for(let i=0;i<25&&!messages.length;i++){const r=await call(url,token,'tools/call',{name:'list_pending',arguments:{}});messages=r.body.result.structuredContent.messages;await new Promise(r=>setTimeout(r,20));}
+  assert.equal(messages.length,1);assert.equal(messages[0].text,'hello');assert.ok(!events.some(e=>e.stage==='binding_challenge'||e.stage==='candidate'));
+  commands.emit('close');await running;assert.equal(input.secret,'');
+});

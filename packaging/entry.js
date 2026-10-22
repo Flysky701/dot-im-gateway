@@ -8,6 +8,7 @@ import {gunzipSync} from 'node:zlib';
 import {getAsset} from 'node:sea';
 import {DatabaseSync} from 'node:sqlite';
 import {Connector} from '../src/connector.js';
+import {qqWorkerStart,verifyQQWorker} from '../src/qq-qr-worker.js';
 import {connectServer} from '../src/connect-http.js';
 import {lock} from '../src/runtime.js';
 import {ensure,Fault} from '../src/util.js';
@@ -51,7 +52,8 @@ async function main(){
       const db=new DatabaseSync(':memory:');ensure(db.prepare('SELECT 1 n').get().n===1,'sqlite_failed');db.close();
       const child=spawn(clientPath,['--version'],{cwd:dir,env:cleanEnvironment(dir),stdio:'ignore',windowsHide:true});children.add(child);
       const code=await new Promise((r,j)=>{child.once('error',j);child.once('exit',r);});ensure(code===0,'embedded_client_failed');
-      safePrint({self_test:'passed',node:process.versions.node,platform:process.platform,sqlite:true,official_client:true,network:false,external_runtime_required:false});await cleanup();return;
+      await verifyQQWorker(text('qq-sdk'));
+      safePrint({self_test:'passed',node:process.versions.node,platform:process.platform,sqlite:true,official_client:true,qq_sdk:true,network:false,external_runtime_required:false});await cleanup();return;
     }
     const startTunnel=async({url,bearer,key,tunnelId,organizationId,signal,onExit})=>{
       ensure(!preview,'preview_network_disabled');ensure(/^http:\/\/127\.0\.0\.1:[0-9]+\/mcp$/.test(url),'invalid_gateway_address');
@@ -73,7 +75,7 @@ async function main(){
     };
     connector=preview?{snapshot:()=>({stage:'idle'}),start:()=>{throw new Fault('preview_network_disabled');},command:()=>{throw new Fault('preview_network_disabled');},stop:async()=>{}}:new Connector({dataDir:path.join(dir,'data'),startTunnel,onEnd:s=>{
       safePrint({stage:s.stage,...(s.code?{code:s.code}:{})});endTimer=setTimeout(()=>{void cleanup();},s.stage==='failed'?15000:500);
-    }});
+    },startQrConnect:qqWorkerStart(text('qq-sdk'))});
     const token=preview?'synthetic-preview-access-0000000000000000':randomBytes(32).toString('hex');
     server=connectServer({token,connector,assets:{'/':{body:text('html'),type:'text/html; charset=utf-8'},'/app.js':{body:text('js'),type:'text/javascript; charset=utf-8'},'/style.css':{body:text('css'),type:'text/css; charset=utf-8'}},finish:()=>{server.closeAllConnections();server.close();safePrint({stage:'page_closed',bridge_running:true});}});
     await new Promise((r,j)=>{server.once('error',j);server.listen(port,'127.0.0.1',r);});

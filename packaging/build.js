@@ -15,15 +15,23 @@ const run=(cmd,args)=>{const r=spawnSync(cmd,args,{cwd:root,stdio:'inherit'});if
 const hash=b=>createHash('sha256').update(b).digest('hex');
 await build({entryPoints:[path.join(pkg,'entry.js')],bundle:true,platform:'node',format:'cjs',target:'node24',outfile:path.join(work,'entry.cjs'),logLevel:'warning'});
 await build({entryPoints:[path.join(pkg,'browser.js')],bundle:true,platform:'browser',format:'iife',minify:true,outfile:path.join(work,'browser.js'),logLevel:'warning'});
+await build({entryPoints:[path.join(pkg,'qq-worker.js')],bundle:true,platform:'node',format:'cjs',target:'node24',outfile:path.join(work,'qq-worker.cjs'),logLevel:'warning'});
 const binary=fs.readFileSync(path.join(cache,process.platform==='win32'?'tunnel-client.exe':'tunnel-client'));
 fs.writeFileSync(path.join(work,'tunnel.gz'),gzipSync(binary,{level:9}));
 const source=spawnSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).stdout.trim();
 const manifest={platform:process.platform,arch:process.arch,node:process.versions.node,tunnelVersion:'0.0.17',tunnelSha256:hash(binary),sourceCommit:source};
 fs.writeFileSync(path.join(work,'manifest.json'),JSON.stringify(manifest));
 const notices=['LICENSE','THIRD_PARTY_NOTICES.md','licenses/qrcode-generator-MIT.txt'].map(x=>fs.readFileSync(path.join(root,x),'utf8'));
+notices.push('Tencent qqbot-connector 1.2.0 — UNLICENSED; private integration authorized by the project owner. No MIT redistribution grant is asserted.');
+notices.push(fs.readFileSync(path.join(pkg,'node_modules/@tencent-connect/qqbot-connector/package.json'),'utf8'));
+notices.push(fs.readFileSync(path.join(pkg,'node_modules/@tencent-connect/qqbot-connector/README.md'),'utf8'));
+notices.push(fs.readFileSync(path.join(pkg,'node_modules/qrcode-terminal/LICENSE'),'utf8'));
+notices.push('qrcode-terminal includes QRCode for JavaScript, Copyright (c) 2009 Kazuhiko Arase, MIT. Original attribution:');
+notices.push(fs.readFileSync(path.join(pkg,'node_modules/qrcode-terminal/vendor/QRCode/index.js'),'utf8').split('var QR8bitByte')[0]);
 for(const file of ['node-LICENSE','tunnel-LICENSE','tunnel-NOTICE','tunnel-dependencies.txt'])notices.push(fs.readFileSync(path.join(cache,file),'utf8'));
 fs.writeFileSync(path.join(work,'licenses.txt'),notices.join('\n\n---\n\n'));
 const config={main:path.join(work,'entry.cjs'),output:path.join(work,'sea.blob'),disableExperimentalSEAWarning:true,useSnapshot:false,useCodeCache:false,execArgvExtension:'none',assets:{html:path.join(root,'web/connect.html'),css:path.join(root,'web/connect.css'),js:path.join(work,'browser.js'),'tunnel.gz':path.join(work,'tunnel.gz'),manifest:path.join(work,'manifest.json'),licenses:path.join(work,'licenses.txt')}};
+config.assets['qq-sdk']=path.join(work,'qq-worker.cjs');
 fs.writeFileSync(path.join(work,'sea.json'),JSON.stringify(config));run(process.execPath,['--experimental-sea-config',path.join(work,'sea.json')]);
 const target=path.join(dist,'dot-im-connect-'+process.platform+'-x64'+(process.platform==='win32'?'.exe':''));fs.copyFileSync(process.execPath,target);
 // An injected binary cannot keep Node's original Authenticode signature. Remove
