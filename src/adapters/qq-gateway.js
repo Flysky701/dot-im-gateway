@@ -40,32 +40,35 @@ export async function openSocket(url,hosts){
   });
 }
 export class QQGateway {
-  constructor(adapter,store,hosts,connect=openSocket){Object.assign(this,{adapter,store,hosts,connect});this.stopped=false;this.socket=null;}
+  constructor(adapter,store,hosts,connect=openSocket,onFailure=()=>{},onProgress=()=>{}){Object.assign(this,{adapter,store,hosts,connect,onFailure,onProgress});this.stopped=false;this.socket=null;}
   stop(){this.stopped=true;this.socket?.destroy();}
-  async run(){let failures=0;while(!this.stopped){try{await this.session();failures=0;}catch{this.store.audit('qq_connection_retry');failures++;}if(!this.stopped)await pause(Math.min(60000,1000*2**Math.min(failures,6)));}}
+  async run(){let failures=0;while(!this.stopped){try{await this.session();failures=0;}catch(e){this.store.audit('qq_connection_retry');failures++;this.onFailure(e instanceof Fault?e.code:'qq_connection_failed');}if(!this.stopped)await pause(Math.min(60000,1000*2**Math.min(failures,6)));}}
   async session(){
     const info=await this.adapter.gateway();if(this.stopped)return;
     if(!this.store.get('qq.session')&&info.session_start_limit?.remaining===0){await pause(Math.min(60000,Math.max(1000,info.session_start_limit.reset_after||60000)));return;}
     const {socket,head}=await this.connect(info.url,this.hosts);this.socket=socket;if(this.stopped){socket.destroy();return;}
     return new Promise((resolve,reject)=>{
       let timer,hello=false,waiting=false,settled=false;
-      const timeout=setTimeout(()=>finish(new Fault('qq_hello_timeout')),30000);
+      const timeout=setTimeout(()=>finish(new Fault(hello?'qq_ready_timeout':'qq_hello_timeout')),30000);
       const finish=(e)=>{if(settled)return;settled=true;clearTimeout(timeout);clearInterval(timer);socket.destroy();this.socket=null;e?reject(e):resolve();};
       const send=p=>{ensure(socket.writable&&socket.writableLength<65536,'qq_socket_backpressure');socket.write(clientFrame(JSON.stringify(p)));};
       const frames=new Frames();frames.on('ping',d=>socket.write(clientFrame(d,10)));
       frames.on('close',code=>{
+        this.onProgress({phase:'qq_wss_close',close_code:code});
         if([4001,4002,4010,4011,4012,4013,4014,4914,4915].includes(code)){this.stopped=true;this.store.audit('qq_fatal_close');}
-        finish();
+        finish(new Fault('qq_websocket_closed'));
       });
       frames.on('message',p=>{
+        this.onProgress({phase:'qq_wss_packet',op:Number.isInteger(p.op)?p.op:-1,event_type:['READY','RESUMED','C2C_MESSAGE_CREATE'].includes(p.t)?p.t:'other'});
         if(p.op===10){
-          ensure(!hello&&Number.isInteger(p.d?.heartbeat_interval)&&p.d.heartbeat_interval>=1000&&p.d.heartbeat_interval<=300000,'qq_invalid_hello');hello=true;clearTimeout(timeout);
+          ensure(!hello&&Number.isInteger(p.d?.heartbeat_interval)&&p.d.heartbeat_interval>=1000&&p.d.heartbeat_interval<=300000,'qq_invalid_hello');hello=true;
           const session=this.store.get('qq.session');send(session?{op:6,d:{token:`QQBot ${info.token}`,session_id:session,seq:Number(this.store.get('qq.seq')||0)}}:{op:2,d:{token:`QQBot ${info.token}`,intents:1<<25,shard:[0,1]}});
           timer=setInterval(()=>{try{if(waiting)return finish(new Fault('qq_heartbeat_timeout'));waiting=true;send({op:1,d:this.store.get('qq.seq')?Number(this.store.get('qq.seq')):null});}catch(e){finish(e);}},p.d.heartbeat_interval);
-        }else if(p.op===11)waiting=false;
+        }else if(p.op===1)send({op:1,d:this.store.get('qq.seq')?Number(this.store.get('qq.seq')):null});
+        else if(p.op===11)waiting=false;
         else if(p.op===7)finish();
         else if(p.op===9){this.store.run("DELETE FROM meta WHERE k IN ('qq.session','qq.seq')");finish();}
-        else if(p.op===0){ensure(hello&&Number.isSafeInteger(p.s),'qq_invalid_dispatch');if(p.t==='READY'){ensure(typeof p.d?.session_id==='string','qq_invalid_session');this.store.set('qq.session',p.d.session_id);}this.adapter.receive(p);}
+        else if(p.op===0){ensure(hello&&Number.isSafeInteger(p.s),'qq_invalid_dispatch');if(['READY','RESUMED'].includes(p.t))clearTimeout(timeout);if(p.t==='READY'){ensure(typeof p.d?.session_id==='string','qq_invalid_session');this.store.set('qq.session',p.d.session_id);}this.adapter.receive(p);}
       });
       socket.on('data',b=>{try{frames.feed(b);}catch(e){finish(e);}});socket.on('error',()=>finish(new Fault('qq_socket_error')));socket.on('close',()=>finish());
       if(head.length)try{frames.feed(head);}catch(e){finish(e);}socket.resume();

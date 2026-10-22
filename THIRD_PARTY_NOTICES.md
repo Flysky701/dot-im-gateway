@@ -8,6 +8,7 @@
 - cd233ljx/wechat-dot-bridge、RerrentLinden/dots-wechat-bridge：各自 MIT；阅读其 NOTICE，保留参考许可证，未打包其 Python 依赖或音频组件。
 - NousResearch/hermes-agent：MIT，Copyright (c) 2025 Nous Research；只参考 SessionSource 会话来源设计，不引入 Hermes 运行时。
 - Node.js 24（含 SQLite、OpenSSL 等组件）由操作员从官方发行版安装，保留官方发行包全部许可证。项目没有第三方 npm 运行依赖。Python 3 部署脚本仅使用标准库。
+- 微信临时测试的终端二维码渲染使用未修改 `qrcode 8.2` 官方 PyPI wheel，BSD-3-Clause，含原 QR 算法 MIT 署名；完整许可及固定 SHA256 见 vendor/。只从 wheel 加载，不执行安装脚本或改变系统 Python，不需要 Pillow。该依赖不用于主服务或部署脚本。
 - OpenAI tunnel-client 从 https://github.com/openai/tunnel-client/releases/latest 独立安装，遵从其发行包 LICENSE/NOTICE；本项目既不分发也不重新许可该客户端。
 - Standard Webhooks 签名格式按公开协议自行实现，没有复制库源代码。MCP/OpenAI 文档仅为协议依据，不复制其文档全文。
 

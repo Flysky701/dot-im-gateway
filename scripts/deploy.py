@@ -29,7 +29,7 @@ def safe_prefix(raw):
 
 def manifest(source):
     files = []
-    for top in ('src', 'bin', 'scripts', 'skills', 'deploy', 'docs', 'licenses', 'test'):
+    for top in ('src', 'bin', 'scripts', 'skills', 'deploy', 'docs', 'licenses', 'test', 'vendor'):
         for p in sorted((source / top).rglob('*')):
             require(not p.is_symlink(), 'source_symlink_denied')
             if p.is_file() and '__pycache__' not in p.parts:

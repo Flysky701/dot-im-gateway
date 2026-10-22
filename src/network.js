@@ -28,11 +28,13 @@ export async function pinnedOptions(raw, hosts, resolver = dns.lookup, timeout =
   return {u,options:{hostname:u.hostname,port:443,path:u.pathname+u.search,servername:u.hostname,family:4,autoSelectFamily:false,
     lookup:(_h,_o,cb)=>cb(null,address,4), agent:false, rejectUnauthorized:true}};
 }
-export async function request(raw,{hosts,method='POST',headers={},body=Buffer.alloc(0),limit=1048576,timeout=10000}={}) {
+export async function request(raw,{hosts,method='POST',headers={},body=Buffer.alloc(0),limit=1048576,timeout=10000,signal}={}) {
+  if(signal?.aborted)throw new Fault('request_cancelled','retry');
   let options; try {({options}=await pinnedOptions(raw,hosts));} catch(e) {if(e instanceof Fault) throw e; throw new Fault('network_before_connect','retry');}
+  if(signal?.aborted)throw new Fault('request_cancelled','retry');
   return new Promise((resolve,reject)=>{
     let sent=false;
-    const req=https.request({...options,method,headers:{...headers,'Content-Length':body.length}},res=>{
+    const req=https.request({...options,signal,method,headers:{...headers,'Content-Length':body.length}},res=>{
       const chunks=[];let size=0;
       res.on('data',b=>{size+=b.length;if(size>limit) req.destroy(new Fault('response_too_large','uncertain')); else chunks.push(b);});
       res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body:Buffer.concat(chunks)}));
