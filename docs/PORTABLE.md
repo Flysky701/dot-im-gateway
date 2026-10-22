@@ -24,6 +24,8 @@
 
 ## 当前边界
 
+QQ 扫码连接技术上可行：[官方 connector](https://www.npmjs.com/package/@tencent-connect/qqbot-connector) 提供扫码入口，[WorkBuddy 官方说明](https://www.codebuddy.cn/docs/workbuddy/QQ-Guide) 也支持扫码连接已有机器人。但本次核对的 connector 1.2.0 标记 UNLICENSED，分发许可待核；当前 EXE 仍使用已实现的手填 AppID/AppSecret 入口，没有捆绑或运行该 SDK。未来可替换连接页的凭据取得步骤，复用已有网关及本人绑定检查；不伪装其他客户端品牌、不复制未公开底层接口规避许可、不替换已有机器人。
+
 一次运行连接一个渠道，同一用户同时只允许一个便携实例，避免争用同一 Tunnel。旧模块化服务仍支持独立 QQ/微信适配器；便携入口没有多渠道管理后台。
 
 便携入口只接收本人文字并原会话回复，附件、Events 自动唤醒和主动发送均不开放。不创建 Agent、不调用模型 API、不接受任意服务器路径或命令。页面输入、QR、验证码、凭据只留进程内存；临时 SQLite 保存本次来信/回复，正常退出删除。微信侧绑定需用户在手机上自行断开。
