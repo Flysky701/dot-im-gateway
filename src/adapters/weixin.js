@@ -37,6 +37,7 @@ export class Weixin {
     const created=Number(raw.create_time_ms);ensure(Number.isSafeInteger(created)&&created<=this.clock()+30000,'invalid_timestamp');
     const id='msg_'+hash('weixin:'+sourceId),items=raw.item_list;ensure(Array.isArray(items)&&items.length>0&&items.length<=8,'unsupported_message');
     let text='',media=[];
+    try{
     for(const item of items){
       if(item.type===1){text+=str(item.text_item?.text,16000)+'\n';continue;}
       ensure(item.type===2||item.type===4,'unsupported_message');
@@ -54,6 +55,10 @@ export class Weixin {
     }
     ensure(text.length<=16000,'text_limit');
     return {id,platform:'weixin',sourceId,owner:this.c.ownerId,conversation:this.c.ownerId,text:text.trim(),media,context:raw.context_token,created,expires:created+this.c.replyTtlMs};
+    }catch(e){
+      if(e.kind!=='retry'&&e.kind!=='uncertain')this.media.discardUnaccepted(id);
+      throw e;
+    }
   }
   async sendReply(m,r){
     ensure(m.owner===this.c.ownerId && m.conversation===this.c.ownerId,'owner_mismatch');

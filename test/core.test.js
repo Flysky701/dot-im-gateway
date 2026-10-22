@@ -21,7 +21,7 @@ test('ack/final are immutable and idempotent with original route',async t=>{
   assert.throws(()=>f.core.reply({message_id:m.id,phase:'ack',text:'changed'}),/reply_conflict/);
   assert.throws(()=>f.core.reply({message_id:m.id,phase:'ack',text:'received',platform:'weixin'}));
   f.core.reply({message_id:m.id,phase:'final',text:'done'});const sends=[];f.adapters.qq.sendReply=async (message,r)=>{sends.push([message.platform,message.owner,r.phase]);return 'accepted-'+r.phase;};
-  await f.core.tick();assert.deepEqual(sends,[['qq','qq-owner-stable','ack'],['qq','qq-owner-stable','final']]);assert.equal(f.store.pending().length,0);
+  await f.core.tick();assert.deepEqual(sends,[['qq','qq-owner-stable','ack'],['qq','qq-owner-stable','final']]);assert.equal(f.store.pendingPage(undefined,now).messages.length,0);
 });
 test('unknown send result is not retried and blocks final',async t=>{
   const f=fixture(t),m=await accept(f);f.core.reply({message_id:m.id,phase:'ack',text:'received'});f.core.reply({message_id:m.id,phase:'final',text:'done'});
@@ -46,4 +46,44 @@ test('simultaneous tick calls cannot double-send',async t=>{
 });
 test('uint64 numeric IDs preserve exact wire value without touching text',()=>{
   const d=parseJson('{"message_id":18446744073709551615,"text":"message_id:18446744073709551615","small":7}');assert.equal(d.message_id,'18446744073709551615');assert.equal(d.small,7);
+});
+test('more than ten blocked finals cannot starve a healthy conversation',async t=>{
+  const f=fixture(t),blocked=[];
+  for(let i=0;i<36;i++){
+    const m=await accept(f,'qq','blocked-'+i),a=f.core.reply({message_id:m.id,phase:'ack',text:'ack'});
+    f.core.reply({message_id:m.id,phase:'final',text:'final'});
+    const state=['rejected','cancelled','uncertain'][i%3];f.store.run('UPDATE replies SET state=? WHERE id=?',state,a.id);blocked.push({m,a,state});
+  }
+  const healthy=await accept(f,'qq','healthy');for(const phase of ['ack','final'])f.core.reply({message_id:healthy.id,phase,text:phase});
+  const sent=[];f.adapters.qq.sendReply=async(m,r)=>{sent.push([m.id,r.phase]);return 'accepted';};
+  await f.core.tick();assert.deepEqual(sent,[[healthy.id,'ack'],[healthy.id,'final']]);
+  for(const {m,state} of blocked)assert.equal(f.store.one("SELECT state FROM replies WHERE message_id=? AND phase='final'",m.id).state,state==='uncertain'?'pending':'cancelled');
+  const uncertain=blocked.find(b=>b.state==='uncertain');f.store.resolve(uncertain.a.id,'accepted');await f.core.tick();
+  assert.deepEqual(sent.at(-1),[uncertain.m.id,'final']);assert.equal(sent.length,3);
+  f.store.run('UPDATE messages SET expires=0');await f.core.tick();assert.equal(sent.length,3);
+  assert.equal(f.store.one("SELECT count(*) n FROM replies WHERE state='pending'").n,0);
+  assert.equal(f.store.one("SELECT count(*) n FROM replies WHERE state='uncertain'").n,11);
+});
+test('disabled and retrying inbox rows cannot starve later messages; retries persist backoff',async t=>{
+  const f=fixture(t);let calls=0;
+  for(let i=0;i<15;i++)f.store.checkpoint('weixin',[{key:'disabled-'+i,raw:{}}],'weixin.cursor',String(i));
+  for(let i=0;i<12;i++)f.store.checkpoint('qq',[{key:'retry-'+i,raw:qqRaw('retry-'+i)}],'qq.seq',String(i));
+  f.store.checkpoint('qq',[{key:'healthy',raw:qqRaw('healthy')}],'qq.seq','13');
+  f.c.weixin.enabled=false;const normalize=f.adapters.qq.normalize.bind(f.adapters.qq);
+  f.adapters.qq.normalize=raw=>{if(raw.d.id.startsWith('retry-')){calls++;throw new Fault('temporary','retry');}return normalize(raw);};
+  await f.core.tick();await f.core.tick();assert.equal(f.store.status().messages,1);assert.equal(calls,12);
+  await f.core.tick();assert.equal(calls,12);assert.ok(f.store.all("SELECT * FROM inbox WHERE platform='qq' AND state='pending'").every(r=>r.due===now+1000&&r.attempts===1));
+  f.core.clock=()=>now+1000;await f.core.tick();assert.equal(calls,22);
+  assert.equal(f.store.one("SELECT due FROM inbox WHERE attempts=2").due,now+3000);
+});
+test('pending pages skip terminal, expired and disabled messages without hiding later work',async t=>{
+  const f=fixture(t);
+  for(let i=0;i<55;i++){const m=await accept(f,'qq','old-'+i);f.store.run('UPDATE messages SET expires=0 WHERE id=?',m.id);}
+  const terminal=await accept(f,'qq','terminal'),ack=f.core.reply({message_id:terminal.id,phase:'ack',text:'ack'});f.store.run("UPDATE replies SET state='rejected' WHERE id=?",ack.id);
+  for(let i=0;i<55;i++)await accept(f,'qq','active-'+i);
+  await accept(f,'weixin','disabled');const first=f.store.pendingPage(undefined,now,['qq']);
+  assert.equal(first.messages.length,50);assert.ok(first.next_cursor);
+  const second=f.store.pendingPage(first.next_cursor,now,['qq']);assert.equal(second.messages.length,5);assert.equal(second.next_cursor,null);
+  assert.equal(new Set([...first.messages,...second.messages].map(m=>m.id)).size,55);
+  assert.throws(()=>f.store.pendingPage('bad',now),/invalid_cursor/);
 });

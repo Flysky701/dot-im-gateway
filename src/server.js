@@ -12,7 +12,7 @@ const s={type:'string',minLength:1};
 const schema=(properties={},required=Object.keys(properties))=>({type:'object',properties,required,additionalProperties:false});
 export const tools=[
   {name:'gateway_status',description:'Gateway health and queue counts; accepted is provider acceptance, not a delivery receipt.',inputSchema:schema()},
-  {name:'list_pending',description:'Read up to 50 unfinished owner messages. Each message has immutable original channel routing.',inputSchema:schema()},
+  {name:'list_pending',description:'Page through actionable or uncertain owner messages, 50 per page. Follow next_cursor until null. Expired and terminal replies are excluded; read_message retains their status.',inputSchema:schema({cursor:s},[])},
   {name:'read_message',description:'Read one received message and ack/final statuses by opaque message ID.',inputSchema:schema({message_id:s})},
   {name:'reply',description:'Queue an immutable ack or final to the original channel only. Send ack first. Repeated identical calls are idempotent; uncertainty requires operator reconciliation.',inputSchema:schema({message_id:s,phase:{enum:['ack','final']},text:{type:'string',maxLength:16000},media_id:s},['message_id','phase'])},
   {name:'put_media',description:'Store PNG, JPEG or PDF bytes for this Weixin message; max 4 MiB. Never accepts server paths or URLs.',inputSchema:schema({message_id:s,mime:{enum:['image/png','image/jpeg','application/pdf']},data_base64:s})},
@@ -39,7 +39,7 @@ export class RPC {
       try{
         let data;
         if(p.name==='gateway_status')data=store.status();
-        if(p.name==='list_pending')data=store.pending().filter(m=>this.core.config[m.platform].enabled);
+        if(p.name==='list_pending')data=store.pendingPage(a.cursor,this.core.clock(),['qq','weixin'].filter(p=>this.core.config[p].enabled));
         if(p.name==='read_message'){this.core.authorize(store.message(a.message_id));data=store.publicMessage(a.message_id);}
         if(p.name==='reply')data=this.core.reply(a);
         if(p.name==='put_media'){

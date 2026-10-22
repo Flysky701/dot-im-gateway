@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 (ROOT / 'runtime').mkdir(exist_ok=True)
@@ -38,6 +39,27 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(a, deploy.manifest(ROOT))
         self.assertNotIn('config.json', a)
         self.assertTrue(all(not f.endswith('.env') for f in a))
+
+    def test_second_prefix_never_touches_another_systemd_installation(self):
+        with tempfile.TemporaryDirectory(prefix='dot-deploy-', dir=ROOT / 'runtime') as tmp:
+            home = Path(tmp)
+            prefix = home / 'installation'
+            other = home / 'installation-other'
+            unit_path = home / '.config/systemd/user/dot-im-gateway.service'
+            unit_path.parent.mkdir(parents=True)
+            original = deploy.unit(other, '/usr/bin/node')
+            unit_path.write_text(original, encoding='utf-8')
+            for action in ['install', 'upgrade', 'rollback', 'uninstall']:
+                with self.subTest(action=action), patch.object(deploy.Path, 'home', return_value=home), \
+                        patch.object(deploy.sys, 'platform', 'linux'), \
+                        patch.object(deploy.shutil, 'which', return_value='/usr/bin/node'), \
+                        patch.object(deploy.sys, 'argv', ['deploy.py', action, '--prefix', str(prefix), '--apply']), \
+                        patch.object(deploy, 'run') as run:
+                    with self.assertRaisesRegex(ValueError, 'unrelated_systemd_unit_exists'):
+                        deploy.main()
+                    run.assert_not_called()
+                    self.assertFalse(prefix.exists())
+                    self.assertEqual(unit_path.read_text(encoding='utf-8'), original)
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux deployment only')
     def test_apply_lifecycle_preserves_data(self):

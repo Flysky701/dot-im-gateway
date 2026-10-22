@@ -18,6 +18,9 @@ export class Store {
       CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY,message_id TEXT NOT NULL,mime TEXT NOT NULL,name TEXT NOT NULL,size INTEGER NOT NULL,created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER NOT NULL,code TEXT NOT NULL,ref TEXT);
     `);
+    // Additive migration: existing v1 inbox rows start immediately eligible.
+    const columns=this.all('PRAGMA table_info(inbox)').map(x=>x.name);
+    for(const column of ['attempts','due'])if(!columns.includes(column))this.db.exec(`ALTER TABLE inbox ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
     const version=this.get('schema'); ensure(!version || version==='1','unsupported_schema');this.set('schema','1');
   }
   close(){this.db.close();}
@@ -49,7 +52,11 @@ export class Store {
   }
   message(id){const r=this.one('SELECT * FROM messages WHERE id=?',id);ensure(r,'message_not_found');return r;}
   publicMessage(id){const m=this.message(id);return {id:m.id,platform:m.platform,text:m.text,media:JSON.parse(m.media),created:iso(m.created),expires:iso(m.expires),replies:this.all('SELECT id,phase,state,provider_id,error FROM replies WHERE message_id=?',id)};}
-  pending(){return this.all("SELECT m.id FROM messages m WHERE NOT EXISTS(SELECT 1 FROM replies r WHERE r.message_id=m.id AND r.phase='final' AND r.state='accepted') ORDER BY m.created LIMIT 50").map(r=>this.publicMessage(r.id));}
+  pendingPage(cursor='0',now=Date.now(),platforms=['qq','weixin']){
+    ensure(typeof cursor==='string'&&/^(0|[1-9][0-9]{0,14})$/.test(cursor),'invalid_cursor');
+    const rows=this.all("SELECT m.rowid position,m.id FROM messages m WHERE m.rowid>? AND m.expires>? AND ((m.platform='qq' AND ?=1) OR (m.platform='weixin' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM replies r WHERE r.message_id=m.id AND ((r.phase='final' AND r.state IN ('accepted','rejected','cancelled')) OR (r.phase='ack' AND r.state IN ('rejected','cancelled')))) ORDER BY m.rowid LIMIT 51",Number(cursor),now,Number(platforms.includes('qq')),Number(platforms.includes('weixin')));
+    return {messages:rows.slice(0,50).map(r=>this.publicMessage(r.id)),next_cursor:rows.length>50?String(rows[49].position):null};
+  }
   enqueue(id,phase,payload){
     return this.tx(()=>{
       this.message(id);ensure(['ack','final'].includes(phase));

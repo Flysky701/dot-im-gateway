@@ -15,20 +15,25 @@ export class Core {
   async tick(){
     if(this.busy)return;this.busy=true;
     try{
-      for(const row of this.store.all("SELECT * FROM inbox WHERE state='pending' ORDER BY rowid LIMIT 10")){
+      for(const row of this.store.all("SELECT * FROM inbox WHERE state='pending' AND due<=? AND ((platform='qq' AND ?=1) OR (platform='weixin' AND ?=1)) ORDER BY rowid LIMIT 10",this.clock(),Number(this.config.qq.enabled),Number(this.config.weixin.enabled))){
         try{
           if(!this.config[row.platform].enabled)continue;
           const raw=JSON.parse(row.raw);const m=await this.adapters[row.platform].normalize(raw);
           this.authorize(m);this.store.accept(m,this.clock());
           this.store.run("UPDATE inbox SET state='accepted',raw='{}' WHERE id=?",row.id);
         }catch(e){
-          if(e.kind==='retry'||e.kind==='uncertain')continue;
+          if(e.kind==='retry'||e.kind==='uncertain'){
+            this.store.run('UPDATE inbox SET attempts=attempts+1,due=? WHERE id=?',this.clock()+Math.min(300000,1000*2**Math.min(row.attempts,9)),row.id);continue;
+          }
           this.store.run("UPDATE inbox SET state='rejected',raw='{}',error=? WHERE id=?",e instanceof Fault?e.code:'invalid_message',row.id);
         }
       }
-      for(const r of this.store.all("SELECT * FROM replies WHERE state='pending' AND due<=? ORDER BY rowid LIMIT 10",this.clock())){
+      for(let slot=0;slot<10;slot++){
+        this.store.run("UPDATE replies SET state='rejected',error='reply_window_expired' WHERE state='pending' AND message_id IN (SELECT id FROM messages WHERE expires<=?)",this.clock());
+        this.store.run("UPDATE replies SET state='cancelled',error='ack_terminal' WHERE state='pending' AND phase='final' AND message_id IN (SELECT message_id FROM replies WHERE phase='ack' AND state IN ('rejected','cancelled'))");
+        const r=this.store.one("SELECT r.* FROM replies r WHERE r.state='pending' AND r.due<=? AND (r.phase='ack' OR EXISTS(SELECT 1 FROM replies a WHERE a.message_id=r.message_id AND a.phase='ack' AND a.state='accepted')) ORDER BY r.rowid LIMIT 1",this.clock());
+        if(!r)break;
         const m=this.store.message(r.message_id);
-        if(r.phase==='final'&&!this.store.one("SELECT id FROM replies WHERE message_id=? AND phase='ack' AND state='accepted'",m.id))continue;
         try{this.authorize(m);ensure(m.expires>this.clock(),'reply_window_expired');}catch(e){this.store.run("UPDATE replies SET state='rejected',error=? WHERE id=?",e.code,r.id);continue;}
         this.store.run("UPDATE replies SET state='sending',attempts=attempts+1 WHERE id=? AND state='pending'",r.id);
         try{

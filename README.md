@@ -65,7 +65,7 @@ node bin/gateway.js status --config config.json
 | 工具 | 用途 |
 |---|---|
 | `gateway_status` | 脱敏队列数量 |
-| `list_pending` | 最早 50 条未完成消息，含回复状态 |
+| `list_pending` | 每页 50 条可处理或待核实消息，返回 `messages` 与 `next_cursor`；传入 cursor 继续，排除过期、终止和停用平台记录 |
 | `read_message` | 读取消息及 ack/final 状态 |
 | `reply` | 固定消息 ID + `ack` 或 `final`；不能指定收件人或平台 |
 | `put_media` | 为某条微信消息保存 PNG/JPEG/PDF base64 |
@@ -74,6 +74,8 @@ node bin/gateway.js status --config config.json
 事件仅携带 `message_id` 和 `platform`，不包含指挥 dot 行为的文字。原 dot 需要用户明确订阅并设定：收到后读消息、尽快 `reply(ack)`，执行任务后 `reply(final)`，用 `read_message` 检查实际发送状态。网关不替 dot 决定或执行任务。
 
 回复唯一键是 `(message_id, phase)`；相同内容重复调用安全，内容不同报冲突。`final` 要等 `ack` 被平台接受才发送。`pending` 表示排队，`accepted` 表示接口接受，`uncertain` 表示可能已发送，不能盲目重发。人工核实后使用 CLI reconcile。详见 [架构](docs/ARCHITECTURE.md)、[安全边界](docs/SECURITY.md)。
+
+ack 被明确拒绝或取消时，其排队 final 会取消；ack 为 uncertain 时 final 等待人工核实，但不阻塞其他消息，超过回复窗口即终止。入站瞬时故障采用持久化指数退避（1 秒至 5 分钟），停用平台不占处理名额。附件按同一消息的类型和完整字节复用，不因多附件部分下载失败反复占用配额。
 
 ## 运维与交付
 

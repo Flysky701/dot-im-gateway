@@ -37,6 +37,20 @@ for(const [mime,bytes,type] of [['image/png',png,2],['application/pdf',pdf,4]])t
 test('AES fixture supports raw and hex-base64 keys, rejects padding/key errors',()=>{
   const key=Buffer.alloc(16,3),data=Buffer.alloc(32,1);assert.equal(aes(data,key).length,48);assert.deepEqual(aes(aes(data,key),key,true),data);assert.deepEqual(mediaKey({media:{aes_key:key.toString('base64')}}),key);assert.throws(()=>mediaKey({media:{aes_key:'eA=='}}));assert.throws(()=>aes(Buffer.alloc(17),key,true));
 });
+test('partial media download retries reuse saved bytes without consuming quota again',async t=>{
+  const f=fixture(t),raw=wxRaw('multi-media'),key=Buffer.alloc(16,9);let failing=true;
+  f.c.maxStoredMediaBytes=png.length+pdf.length;
+  raw.item_list=[{type:2,image_item:{aeskey:key.toString('hex'),media:{encrypt_query_param:'first'}}},{type:4,file_item:{file_name:'report.pdf',aeskey:key.toString('hex'),media:{encrypt_query_param:'second'}}}];
+  f.adapters.weixin.send=async url=>url.includes('second')&&failing?response({},503):{status:200,headers:{},body:aes(url.includes('first')?png:pdf,key)};
+  let original;
+  for(let i=0;i<5;i++){
+    await assert.rejects(f.adapters.weixin.normalize(raw),/media_download_retry/);
+    const rows=f.store.all('SELECT id FROM media');assert.equal(rows.length,1);original??=rows[0].id;assert.equal(rows[0].id,original);
+  }
+  failing=false;const m=await f.adapters.weixin.normalize(raw);assert.equal(m.media[0].id,original);assert.equal(m.media.length,2);
+  const again=await f.adapters.weixin.normalize(raw);assert.deepEqual(again.media,m.media);assert.equal(f.store.one('SELECT sum(size) n FROM media').n,png.length+pdf.length);
+  raw.item_list.push({type:99});await assert.rejects(f.adapters.weixin.normalize(raw),/unsupported_message/);assert.equal(f.store.one('SELECT count(*) n FROM media').n,0);
+});
 test('Weixin session expiration pauses polling and is never reported delivered',async t=>{
   const f=fixture(t);process.env.DOT_WEIXIN_TOKEN='synthetic-test-token';t.after(()=>delete process.env.DOT_WEIXIN_TOKEN);f.adapters.weixin.send=async()=>response({ret:-14});await assert.rejects(f.adapters.weixin.api('getupdates',{}),/session_expired/);assert.equal(f.adapters.weixin.pausedUntil,now+3600000);
 });

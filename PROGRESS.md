@@ -15,3 +15,5 @@
 - 05:06 UTC：完整实现已提交 `7f8ff4a63c7bfccb5288ff8f993919e470b6d48a`，私有仓库 https://github.com/Flysky701/dot-im-gateway 。CI https://github.com/Flysky701/dot-im-gateway/actions/runs/39726056415 的 Linux / Windows 均成功；Linux 隔离安装、重复安装、升级、回滚、卸载保留数据测试通过。
 - 收尾：补齐 MCP 编码名称请求头、缺失请求头与版本错误测试，以及 DNS 解析超时；更新验证文档后提交并核验最终 SHA 的 CI。部署 dry-run 临时路径问题已修复，没有挂起的安装或真实平台动作。
 - 当前边界：本机和 CI 均为离线/模拟/本地回环验证；真实原 dot、官方 Tunnel、订阅与真人 QQ/微信收发等待用户环境。没有获取长期账号凭据。
+- 独立审查修复：复现并修正 outbox 的阻塞 final 饥饿、inbox 停用/重试饥饿、待办前 50 条永久占位、多附件重试容量泄漏，以及 systemd 归属校验晚于 stop。新增回归后本地 Node 46/46，Python 4 通过、1 Linux 专属跳过。收尾提交将再次核验双平台 CI。
+- 通用 Skill 验证补齐：项目忽略目录中的隔离虚拟环境，通过官方 PyPI wheel 安装仅 PyYAML 6.0.3；原 quick_validate.py 输出 `Skill is valid!`，退出码 0。系统 Python 未修改，未新增运行依赖。

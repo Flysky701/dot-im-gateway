@@ -14,6 +14,9 @@ export class Media {
   put(messageId,bytes,mime,name='attachment'){
     ensure(Buffer.isBuffer(bytes) && bytes.length>0 && bytes.length<=this.config.maxMediaBytes,'media_size_limit');
     ensure(detect(bytes)===mime,'media_type_mismatch');
+    for(const m of this.store.all('SELECT * FROM media WHERE message_id=? AND mime=? AND size=?',messageId,mime,bytes.length)){
+      if(this.get(m.id,messageId).data.equals(bytes))return {id:m.id,mime:m.mime,name:m.name,size:m.size};
+    }
     const used=this.store.one('SELECT COALESCE(sum(size),0) n FROM media').n;ensure(used+bytes.length<=this.config.maxStoredMediaBytes,'media_quota');
     const id=randomUUID(); const clean=mime==='application/pdf'?'attachment.pdf':mime==='image/png'?'image.png':'image.jpg';
     fs.writeFileSync(path.join(this.dir,id),bytes,{flag:'wx',mode:0o600});
@@ -25,6 +28,12 @@ export class Media {
     const m=this.store.one('SELECT * FROM media WHERE id=? AND message_id=?',id,messageId);ensure(m,'media_not_found');
     const file=path.join(this.dir,id);ensure(!fs.lstatSync(file).isSymbolicLink(),'unsafe_media_file');
     const data=fs.readFileSync(file);ensure(data.length===m.size && data.length<=this.config.maxMediaBytes,'media_size_limit');return {...m,data};
+  }
+  discardUnaccepted(messageId){
+    if(this.store.one('SELECT id FROM messages WHERE id=?',messageId))return;
+    for(const m of this.store.all('SELECT id FROM media WHERE message_id=?',messageId)){
+      fs.rmSync(path.join(this.dir,m.id),{force:true});this.store.run('DELETE FROM media WHERE id=?',m.id);
+    }
   }
   clean(now=Date.now()){
     let n=0;

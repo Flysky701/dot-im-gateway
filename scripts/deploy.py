@@ -80,6 +80,15 @@ def switch(prefix, target):
     if old:
         (prefix / 'previous.json').write_text(json.dumps({'target': old}), encoding='utf-8')
 
+def check_unit_owner(unit_path, prefix, required=False):
+    require(not unit_path.is_symlink(), 'systemd_unit_symlink_denied')
+    if unit_path.exists():
+        lines = unit_path.read_text(encoding='utf-8').splitlines()
+        require(f'WorkingDirectory={prefix}/current' in lines and
+                f'EnvironmentFile={prefix}/runtime.env' in lines, 'unrelated_systemd_unit_exists')
+    else:
+        require(not required, 'systemd_unit_missing')
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['install', 'upgrade', 'rollback', 'uninstall'])
@@ -101,6 +110,10 @@ def main():
     if not args.apply:
         return
     require(sys.platform.startswith('linux'), 'apply_requires_linux')
+    unit_path = Path.home() / '.config/systemd/user/dot-im-gateway.service'
+    # Validate the fixed unit before touching either installation or stopping services.
+    if not args.no_systemd:
+        check_unit_owner(unit_path, prefix, required=args.action != 'install')
     os.umask(0o077)
     marker = prefix / '.dot-im-gateway'
     if prefix.exists():
@@ -111,7 +124,6 @@ def main():
     else:
         raise ValueError('installation_missing')
     require(not (prefix / 'data').is_symlink(), 'data_symlink_denied')
-    unit_path = Path.home() / '.config/systemd/user/dot-im-gateway.service'
     if args.action in ('upgrade', 'rollback', 'uninstall') and not args.no_systemd:
         run('systemctl', '--user', 'stop', 'dot-im-gateway.service')
     if args.action in ('install', 'upgrade'):
@@ -145,7 +157,7 @@ def main():
         if not args.no_systemd:
             unit_path.parent.mkdir(parents=True, exist_ok=True)
             if unit_path.exists():
-                require(str(prefix) in unit_path.read_text(), 'unrelated_systemd_unit_exists')
+                check_unit_owner(unit_path, prefix)
             unit_path.write_text(unit(prefix, node), encoding='utf-8')
             run('systemctl', '--user', 'daemon-reload')
             run('systemctl', '--user', 'enable', 'dot-im-gateway.service')
@@ -156,7 +168,7 @@ def main():
         switch(prefix, str(previous))
     elif args.action == 'uninstall':
         if not args.no_systemd and unit_path.exists():
-            require(str(prefix) in unit_path.read_text(), 'unrelated_systemd_unit')
+            check_unit_owner(unit_path, prefix)
             run('systemctl', '--user', 'disable', 'dot-im-gateway.service')
             unit_path.unlink()
             run('systemctl', '--user', 'daemon-reload')
