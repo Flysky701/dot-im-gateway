@@ -81,7 +81,7 @@ export class Weixin {
     ensure(m.expires>this.clock()&&m.context,'reply_window_expired');
     const payload=JSON.parse(r.payload);let item;
     if(payload.media_id){
-      const f=this.media.get(payload.media_id,m.id),key=randomBytes(16),filekey=randomBytes(16).toString('hex'),cipher=aes(f.data,key);
+      const f=this.media.get(payload.media_id,m.media_message_id||m.id),key=randomBytes(16),filekey=randomBytes(16).toString('hex'),cipher=aes(f.data,key);
       let u;
       try{u=await this.api('getuploadurl',{filekey,media_type:f.mime==='application/pdf'?3:1,to_user_id:m.owner,rawsize:f.size,rawfilemd5:createHash('md5').update(f.data).digest('hex'),filesize:cipher.length,no_need_thumb:true,aeskey:key.toString('hex')});}
       catch(e){throw new Fault(e.code||'upload_prepare_failed',e.kind==='uncertain'?'retry':e.kind);}

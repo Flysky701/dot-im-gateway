@@ -33,7 +33,7 @@ test('v0.1 combined binding migrates, including a platform added later',t=>{
   }
 });
 test('ack/final are immutable and idempotent with original route',async t=>{
-  const f=fixture(t),m=await accept(f);assert.throws(()=>f.core.reply({message_id:m.id,phase:'final',text:'done'}),/ack_required/);
+  const f=fixture(t),m=await accept(f);
   const a=f.core.reply({message_id:m.id,phase:'ack',text:'received'});assert.deepEqual(f.core.reply({message_id:m.id,phase:'ack',text:'received'}),a);
   assert.throws(()=>f.core.reply({message_id:m.id,phase:'ack',text:'changed'}),/reply_conflict/);
   assert.throws(()=>f.core.reply({message_id:m.id,phase:'ack',text:'received',platform:'weixin'}));

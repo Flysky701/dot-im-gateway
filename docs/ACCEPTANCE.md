@@ -15,7 +15,8 @@
 - [ ] 官方 tunnel-client 固定实际版本/校验和并通过 doctor；正确关联目标 org/workspace，不扩大权限。
 - [ ] 私人 MCP 连接转发 bearer 与现代协议头成功；**原有 dot** 执行 gateway_status/read_message 成功，记录工具结果证据。
 - [ ] 用户在同一个原 dot 明确创建 QQ、微信两个平台 filter 的事件订阅；challenge 通过、订阅 ID 持久化。
-- [ ] QQ 与微信各发送一项实际任务：原 dot 收到事件、调用 read_message、发 ack、执行任务、发 final；真人看到两条回复且原渠道/会话一致。
+- [ ] QQ 与微信各发普通消息：原 dot 收到事件、调用 read_message、自然回复一条 final；真人确认原渠道实收，无固定“收到”。连续发三条短句，确认合为一轮处理；耗时任务另验证可选进度 ack。
+- [ ] QQ 小 TXT、PNG、PDF 和一个普通文件分别接收、检查与回传；失败附件保留明确错误，不能把平台 accepted 当作客户端实收。
 - [ ] 微信原 dot 返回一张图片和一个 PDF：put_media→reply(final)→真实 CDN 上传→真人收到文件且内容相符。确认目标客户端能消费嵌入 PDF 资源。
 - [ ] 明确验证任务超过平台回复窗口、无效 context、token 到期时状态诚实，不转发到其他平台。
 - [ ] 网关重启、主机重启、短时断网、恢复后积压处理；同一消息重放不生成重复回复；记录无法由平台补齐的历史缺口。

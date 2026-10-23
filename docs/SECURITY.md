@@ -7,6 +7,7 @@
 - 外部 URL 必须 HTTPS、443、无用户名/密码/fragment、精确域名白名单。每次建立连接重新解析 DNS，只接受公共 IPv4；在 TLS 验证原域名的同时固定连接 IP。禁用连接池绕过重解析；不跟随任何 3xx。IPv6-only 目标首版失败关闭。
 - 出站 QQ Gateway 同样限制 WSS 精确域名和公共地址，验证 websocket upgrade/accept，掩码客户端帧、限制帧长度并处理碎片。未请求扩展，拒绝服务端压缩扩展。仍需真实 QQ session/reconnect 验收。
 - 微信 full_url 必须仍是配置 CDN 域名；不会把 bot bearer 发给 CDN。AES-128-ECB/PKCS7 是腾讯媒体协议要求，不是本项目为通用文件加密选择的算法。
+- QQ 附件仅从固定官方域下载；先匿名，仅 multimedia.nt.qq.com.cn 的 /download 返回 401/403 时允许一次 QQBot token 回退，并前后检查绑定。其他域、路径或跳转不会收到 token；见 [QQ 文件](QQ_MEDIA.md)。文件检查只返回元信息或有限文本，不自动执行、解压或认证文件安全。
 - 媒体头部/类型和大小校验用于限制输入，不是杀毒或完整 PDF/图像安全解析。禁止自动执行文件，不使用外部转换器；dot 是否读取 PDF 由客户端能力决定，真人验收需验证。
 - 凭据只从环境引用读入，订阅签名密钥与微信消息 context 存在私有 SQLite。数据库不是加密保险箱：本机管理员/备份持有人可以读取这些数据。备份包含密钥和个人消息，应放在可信加密介质。日志仅固定错误类别、计数和内部哈希/不透明 ID，不记录正文、URL、原始身份或密钥。
 - 官方 tunnel-client 是独立信任边界。不得暴露本服务公网，不得扩大 tunnel org/workspace 关联或凭据范围。用其受支持配置转发 gateway Authorization；不要凭空编造参数名或向服务开放免鉴权后门。

@@ -25,10 +25,18 @@ export class Core {
   }
   authorize(m){ensure(this.config[m.platform].enabled && m.owner===this.config[m.platform].ownerId&&m.conversation===m.owner,'binding_revoked');}
   reply(args){
-    exact(args,['message_id','phase','text','media_id']);str(args.message_id);const m=this.store.message(args.message_id);this.authorize(m);
-    ensure(args.phase==='ack'||args.phase==='final');ensure(Boolean(args.text)!==Boolean(args.media_id),'one_reply_content_required');
-    if(args.media_id){ensure(m.platform==='weixin'&&args.phase==='final','unsupported_media_reply');this.media.get(args.media_id,m.id);}else str(args.text,m.platform==='qq'?4000:16000);
-    return this.store.enqueue(m.id,args.phase,args.media_id?{media_id:args.media_id}:{text:args.text},this.clock());
+    exact(args,['message_id','phase','text','media_id']);str(args.message_id);const id=this.store.batchId(args.message_id),m=this.store.replyRoute(id);this.authorize(m);
+    const phase=args.phase??'final';
+    ensure(phase==='ack'||phase==='final');ensure(Boolean(args.text)!==Boolean(args.media_id),'one_reply_content_required');
+    if(args.media_id){ensure(phase==='final','unsupported_media_reply');const f=this.getMedia(id,args.media_id);if(m.platform==='weixin')ensure(['image/png','image/jpeg','application/pdf'].includes(f.mime),'unsupported_media_reply');}else str(args.text,m.platform==='qq'?4000:16000);
+    this.store.seal(id,this.clock());
+    return this.store.enqueue(id,phase,args.media_id?{media_id:args.media_id}:{text:args.text},this.clock());
+  }
+  getMedia(messageId,mediaId){
+    const root=this.store.batchId(messageId);this.authorize(this.store.message(root));
+    const entry=this.store.one('SELECT message_id FROM media WHERE id=?',mediaId);
+    ensure(entry&&this.store.batchId(entry.message_id)===root,'media_not_found');
+    return this.media.get(mediaId,entry.message_id);
   }
   notificationCapabilities(){
     const bound=p=>Boolean(this.config[p].enabled&&this.config[p].ownerId&&this.config[p][p==='qq'?'appId':'botId']&&this.store.get('binding.'+p)===bindingValue(this.config,p));
@@ -52,6 +60,7 @@ export class Core {
     return this.store.notification(id);
   }
   messageTiming(id){
+    id=this.store.batchId(id);
     const route=this.store.one('SELECT platform,owner,conversation FROM messages WHERE id=?',id);ensure(route,'message_not_found');this.authorize(route);
     return this.store.timing(id);
   }
@@ -78,7 +87,7 @@ export class Core {
         try{
           if(!this.config[row.platform].enabled)continue;
           const raw=JSON.parse(row.raw);const m=await this.adapters[row.platform].normalize(raw);
-          this.authorize(m);this.store.accept(m,this.clock());
+          this.authorize(m);this.store.accept(m,this.clock(),this.config.conversation??{debounceMs:2000,maxWaitMs:8000});
           this.store.run("UPDATE inbox SET state='accepted',raw='{}' WHERE id=?",row.id);
         }catch(e){
           if(e.kind==='retry'||e.kind==='uncertain'){
@@ -88,11 +97,14 @@ export class Core {
         }
       }
       for(let slot=0;slot<10;slot++){
-        this.store.run("UPDATE replies SET state='rejected',error='reply_window_expired' WHERE state='pending' AND message_id IN (SELECT id FROM messages WHERE expires<=?)",this.clock());
+        this.store.run("UPDATE replies SET state='rejected',error='reply_window_expired' WHERE state='pending' AND message_id IN (SELECT m.id FROM messages m LEFT JOIN message_batches b ON b.id=m.id WHERE COALESCE((SELECT expires FROM messages WHERE id=b.latest_id),m.expires)<=?)",this.clock());
         this.store.run("UPDATE replies SET state='cancelled',error='ack_terminal' WHERE state='pending' AND phase='final' AND message_id IN (SELECT message_id FROM replies WHERE phase='ack' AND state IN ('rejected','cancelled'))");
-        const r=this.store.one("SELECT r.* FROM replies r WHERE r.state='pending' AND r.due<=? AND (r.phase='ack' OR EXISTS(SELECT 1 FROM replies a WHERE a.message_id=r.message_id AND a.phase='ack' AND a.state='accepted')) ORDER BY r.rowid LIMIT 1",this.clock());
+        const r=this.store.one("SELECT r.* FROM replies r WHERE r.state='pending' AND r.due<=? AND (r.phase='ack' OR NOT EXISTS(SELECT 1 FROM replies a WHERE a.message_id=r.message_id AND a.phase='ack') OR EXISTS(SELECT 1 FROM replies a WHERE a.message_id=r.message_id AND a.phase='ack' AND a.state='accepted')) ORDER BY r.rowid LIMIT 1",this.clock());
         if(!r)break;
-        const m=this.store.message(r.message_id);
+        const m=this.store.replyRoute(r.message_id);
+        r.seq=r.phase==='final'&&this.store.one("SELECT 1 FROM replies WHERE message_id=? AND phase='ack' AND state='accepted'",r.message_id)?2:1;
+        const payload=JSON.parse(r.payload);
+        if(payload.media_id)m.media_message_id=this.store.one('SELECT message_id FROM media WHERE id=?',payload.media_id)?.message_id;
         try{this.authorize(m);ensure(m.expires>this.clock(),'reply_window_expired');}catch(e){this.store.run("UPDATE replies SET state='rejected',error=? WHERE id=?",e.code,r.id);continue;}
         const started=this.clock();this.store.run("UPDATE replies SET state='sending',attempts=attempts+1,started_at=COALESCE(started_at,?),last_started_at=? WHERE id=? AND state='pending'",started,started,r.id);
         try{

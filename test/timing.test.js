@@ -44,6 +44,7 @@ test('persisted receipt, subscription delay, event request, dot reads and ack/fi
 
 test('Weixin receipt uses gateway clock, duplicates preserve first receipt and diagnostic reads do not count as dot reads',async t=>{
   const f=fixture(t);let clock=now;f.adapters.weixin.clock=f.core.clock=()=>clock;
+  f.c.conversation.debounceMs=0;
   f.adapters.weixin.api=async()=>({msgs:[wxRaw()],get_updates_buf:'opaque-cursor'});
   await f.adapters.weixin.poll();clock+=200;await f.adapters.weixin.poll();clock+=100;await f.core.tick();
   const m=f.store.one('SELECT id FROM messages'),rpc=new RPC(f.core,null);

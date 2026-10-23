@@ -69,7 +69,7 @@ ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<next>'
 
 ```mermaid
 flowchart LR
-  Q[本人 QQ C2C 文字] --> QA[QQ Gateway 适配器]
+  Q[本人 QQ C2C 文字和文件] --> QA[QQ Gateway 适配器]
   W[本人微信私聊] --> WA[微信 iLink 适配器]
   QA --> DB[(SQLite inbox / messages / outbox)]
   WA --> DB
@@ -90,14 +90,16 @@ flowchart LR
 |---|---|---|
 | 本人文字私聊收/发 | 旧受限测试入口已由原 dot 往返并确认实收；新 portable 入口待真人验收 | 旧受限测试入口已由原 dot 往返并确认实收；新 portable 入口待真人验收 |
 | 本人稳定身份绑定 | `user_openid` + bot App ID | `from_user_id` + `to_user_id` bot ID |
-| ack / final | 被动回复 `msg_id` / `msg_seq=1,2` | 原消息 `context_token`，每条一个 item |
-| 入站图片/PDF | **不支持，拒绝附件** | PNG/JPEG/PDF，实现 CDN 解密和模拟测试 |
-| 出站图片/PDF | 首版不支持 | 单个 final 附件，实现加密上传和模拟测试 |
-| 主动推送任意会话 | 不支持 | 不支持；必须有原消息 context 和有效期限 |
+| 自然回复 / 可选进度 | 默认一条 final，`msg_seq=1`；有 ack 时 final 用 2 | 默认一条 final，使用原消息 `context_token` |
+| 连续短句 | 默认安静 2 秒后合并，最长等 8 秒 | 同左；两平台分别处理 |
+| 入站文件 | 图片、PDF、文本和普通文件；失败状态单独返回，已离线验证 | PNG/JPEG/PDF，实现 CDN 解密和模拟测试 |
+| 出站文件 | 单个 final 文件，先上传再发送；已离线验证，待真人验收 | 单个 final 图片/PDF，实现加密上传和模拟测试 |
+| 文件检查 | 文件名、大小、类型、SHA256、有限 UTF-8 预览 | 元信息；图片/PDF 内容通过 read_media 读取 |
+| 本人主动文字通知 | 已实现，平台权限待实测；不能发任意会话 | 实验性 none/latest，平台接受与手机收件待实测 |
 | 送达/已读保证 | 无；只记录服务端接受 | 无；只记录服务端接受 |
 | 群聊/其他人/语音通话 | 不支持 | 不支持 |
 
-微信单文件最大 4 MiB（低于 Tunnel 完整 envelope 10 MiB 限制）；默认总媒体配额 256 MiB、保留 7 天。媒体只接受不透明 ID 或有界 base64 字节，不接受服务器路径或任意 URL。图片/PDF 检查文件头和类型，**不保证文件无恶意内容，也不自动打开执行**。暂不支持多附件 final、文字+附件合并 final、音频/视频和全量历史镜像。
+QQ/微信单文件最大 4 MiB（低于 Tunnel 完整 envelope 10 MiB 限制）；默认总媒体配额 256 MiB、保留 7 天。媒体只接受不透明 ID 或有界 base64 字节，不接受服务器路径或任意 URL。图片/PDF 检查文件头和类型，**不保证文件无恶意内容，也不自动打开执行**。暂不支持多附件 final、文字+附件合并 final、音频/视频播放解析和全量历史镜像。QQ 普通二进制可以收发，但 Office/压缩包等不会由网关解析，详见[QQ 文件](docs/QQ_MEDIA.md)。
 
 QQ 被动回复窗口本地默认 4 分钟，最高 5 分钟，实际服务端可能更严格。微信本地最长保留回复资格 24 小时，但不把它当作服务端承诺；无效 context 会被拒绝。两个平台都不会因任务耗时超过窗口而改用另一渠道。
 
@@ -127,17 +129,18 @@ node bin/gateway.js status --config config.json
 |---|---|
 | `gateway_status` | 脱敏队列数量 |
 | `list_pending` | 每页 50 条可处理或待核实消息，返回 `messages` 与 `next_cursor`；传入 cursor 继续，排除过期、终止和停用平台记录 |
-| `read_message` | 读取消息及 ack/final 状态 |
-| `reply` | 固定消息 ID + `ack` 或 `final`；不能指定收件人或平台 |
+| `read_message` | 读取一轮合并后的短句、原消息 ID 列表及回复状态 |
+| `reply` | 默认直接 final；可选 ack 仅用于耗时任务进度，不能指定收件人或平台 |
 | `notify_owner` | 向已绑定本人主动发送文字；QQ 无入站 msg_id，微信明确选择实验性 none/latest 上下文模式 |
 | `notification_status` | 按通知 ID 查询 queued/accepted/rejected/uncertain、尝试次数及时间，不返回正文或身份 |
 | `message_timing` | 查询接收、事件、dot 读取和 ack/final 阶段时间；不把处理总耗时称为纯思考时间 |
-| `put_media` | 为某条微信消息保存 PNG/JPEG/PDF base64 |
-| `read_media` | 返回消息所属图片或嵌入 PDF 资源 |
+| `put_media` | 保存回复文件 base64；QQ 提供 filename，微信仍限 PNG/JPEG/PDF |
+| `inspect_media` | 查询文件元信息、SHA256 和有限文本预览 |
+| `read_media` | 返回消息所属图片或嵌入文件资源 |
 
-事件仅携带 `message_id` 和 `platform`，不包含指挥 dot 行为的文字。原 dot 需要用户明确订阅并设定：收到后读消息、尽快 `reply(ack)`，执行任务后 `reply(final)`，用 `read_message` 检查实际发送状态。网关不替 dot 决定或执行任务。
+事件仅携带 `message_id` 和 `platform`，不包含指挥 dot 行为的文字。原 dot 需要用户明确订阅并设定：收到后读消息，将批次作为一轮正常对话，只向返回的 `id` 回复一次。默认不发固定“收到”，只有耗时任务才按需发进度 ack。用 `read_message` 检查发送状态。网关不替 dot 决定或执行任务。
 
-回复唯一键是 `(message_id, phase)`；相同内容重复调用安全，内容不同报冲突。`final` 要等 `ack` 被平台接受才发送。`pending` 表示排队，`accepted` 表示接口接受，`uncertain` 表示可能已发送，不能盲目重发。人工核实后使用 CLI reconcile。详见 [架构](docs/ARCHITECTURE.md)、[安全边界](docs/SECURITY.md)。
+回复唯一键是 `(批次根 message_id, phase)`；相同内容重复调用安全，内容不同报冲突。省略 phase 即 final，不要求 ack；若已经排队 ack，仍按原顺序等待其被接受。final 排队后不能再补发 ack。`pending` 表示排队，`accepted` 表示接口接受，`uncertain` 表示可能已发送，不能盲目重发。人工核实后使用 CLI reconcile。详见 [对话流程](docs/CONVERSATION.md)、[架构](docs/ARCHITECTURE.md)、[安全边界](docs/SECURITY.md)。
 
 主动通知是常驻服务的新入口，不依赖上述回复唯一键，也不创建提醒计划。由 Agent 的既有定时能力在指定时间调用，每次逻辑通知固定一个 `idempotency_key`。QQ 平台主动权限/额度和微信无上下文接受能力仍需用户实测，代码不能解除平台限制；`accepted` 也不等于手机送达。参数、可复制提示词、限速及延迟解释见[主动通知与延迟观测](docs/NOTIFICATIONS.md)。Windows 一次性和私聊测试入口仍仅开放原有四个文字工具。
 

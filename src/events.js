@@ -47,11 +47,12 @@ export class Events {
   }
   async tick(){
     const now=this.clock();this.store.run('UPDATE subscriptions SET old_secret=NULL WHERE rotation_until<=?',now);
-    const rows=this.store.all("SELECT * FROM events WHERE state='pending' AND due<=? ORDER BY rowid LIMIT 10",now);
+    const rows=this.store.all("SELECT e.* FROM events e LEFT JOIN message_batches b ON b.id=e.message_id WHERE e.state='pending' AND e.due<=? AND (b.ready_at IS NULL OR b.ready_at<=?) ORDER BY e.rowid LIMIT 10",now,now);
     for(const e of rows){
       const sub=this.store.one('SELECT * FROM subscriptions WHERE id=?',e.sub_id);
       if(!sub.active||sub.principal!==this.c.principal||!this.c[sub.platform].enabled){this.store.run("UPDATE events SET state='cancelled' WHERE id=?",e.id);continue;}
       if(sub.expires<=now){this.store.run("UPDATE events SET state='expired' WHERE id=?",e.id);continue;}
+      this.store.seal(e.message_id,now);
       const started=this.clock();this.store.run("UPDATE events SET state='sending',attempts=attempts+1,started_at=COALESCE(started_at,?),last_started_at=? WHERE id=?",started,started,e.id);
       let status=0;try{status=(await this.post(sub,e.id,Buffer.from(e.body))).status;}catch{}
       // Revocation can occur while HTTP is in flight; never reactivate its queue.

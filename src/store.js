@@ -20,6 +20,9 @@ export class Store {
       CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY,message_id TEXT NOT NULL,mime TEXT NOT NULL,name TEXT NOT NULL,size INTEGER NOT NULL,created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER NOT NULL,code TEXT NOT NULL,ref TEXT);
       CREATE TABLE IF NOT EXISTS message_timing(message_id TEXT PRIMARY KEY REFERENCES messages(id),received_at INTEGER,dot_read_at INTEGER);
+      CREATE TABLE IF NOT EXISTS message_batches(id TEXT PRIMARY KEY REFERENCES messages(id),latest_id TEXT NOT NULL REFERENCES messages(id),first_at INTEGER NOT NULL,ready_at INTEGER NOT NULL,sealed INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS batch_members(message_id TEXT PRIMARY KEY REFERENCES messages(id),batch_id TEXT NOT NULL REFERENCES message_batches(id));
+      CREATE INDEX IF NOT EXISTS batch_members_batch ON batch_members(batch_id);
       CREATE TABLE IF NOT EXISTS notifications(id TEXT PRIMARY KEY,platform TEXT NOT NULL,binding TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,due INTEGER NOT NULL DEFAULT 0,queued_at INTEGER NOT NULL,expires INTEGER NOT NULL,started_at INTEGER,last_started_at INTEGER,accepted_at INTEGER,provider_id TEXT,error TEXT);
       CREATE INDEX IF NOT EXISTS notifications_due ON notifications(state,due);
       CREATE INDEX IF NOT EXISTS notifications_rate ON notifications(platform,queued_at);
@@ -51,27 +54,62 @@ export class Store {
       this.set(cursorKey,cursor);
     });
   }
-  accept(m,now){
+  accept(m,now,conversation={debounceMs:0,maxWaitMs:0}){
     return this.tx(()=>{
       const added=this.run('INSERT OR IGNORE INTO messages VALUES(?,?,?,?,?,?,?,?,?,?)',m.id,m.platform,m.sourceId,m.owner,m.conversation,m.text,canonical(m.media||[]),m.context||'',m.created,m.expires);
       if(added.changes){
         const receipt=this.one('SELECT received_at FROM inbox WHERE id=?',hash(m.platform+':'+m.sourceId));
         this.run('INSERT INTO message_timing(message_id,received_at) VALUES(?,?)',m.id,receipt?receipt.received_at:now);
+        const received=receipt?.received_at??now;
+        // Only short plain text is debounced. Files, commands and long requests
+        // are separate turns; a delivered/read batch is immutable.
+        const short=conversation.debounceMs>0&&m.text.length<=1000&&!(m.media?.length)&&!m.text.trimStart().startsWith('/');
+        const candidate=short?this.one(`SELECT b.* FROM message_batches b JOIN messages last ON last.id=b.latest_id
+          WHERE b.sealed=0 AND b.ready_at>? AND b.first_at+?>? AND last.platform=? AND last.owner=? AND last.conversation=?
+          AND last.created<=? AND last.created+?>=? AND last.media='[]' AND length(last.text)<=1000
+          AND NOT EXISTS(SELECT 1 FROM replies r WHERE r.message_id=b.id)
+          AND (SELECT count(*) FROM batch_members WHERE batch_id=b.id)<20
+          AND (SELECT sum(length(text)+1) FROM messages JOIN batch_members ON messages.id=message_id WHERE batch_id=b.id)+?<=8000
+          ORDER BY b.rowid DESC LIMIT 1`,received,conversation.maxWaitMs,now,m.platform,m.owner,m.conversation,m.created,conversation.debounceMs,m.created,m.text.length):null;
+        if(candidate){
+          this.run('INSERT INTO batch_members VALUES(?,?)',m.id,candidate.id);
+          const ready=Math.min(received+conversation.debounceMs,candidate.first_at+conversation.maxWaitMs);
+          this.run('UPDATE message_batches SET latest_id=?,ready_at=? WHERE id=?',m.id,ready,candidate.id);
+          this.run("UPDATE events SET due=? WHERE message_id=? AND state='pending' AND attempts=0",ready,candidate.id);
+        }else{
+          // A new independent turn closes any older collecting turn on this route.
+          this.run(`UPDATE message_batches SET sealed=1,ready_at=MIN(ready_at,?) WHERE sealed=0 AND id IN
+            (SELECT id FROM messages WHERE platform=? AND owner=? AND conversation=?)`,now,m.platform,m.owner,m.conversation);
+          this.run(`UPDATE events SET due=MIN(due,?) WHERE state='pending' AND attempts=0 AND message_id IN
+            (SELECT b.id FROM message_batches b JOIN messages m ON m.id=b.id WHERE b.sealed=1 AND b.ready_at<=? AND m.platform=? AND m.owner=? AND m.conversation=?)`,now,now,m.platform,m.owner,m.conversation);
+          this.run('INSERT INTO message_batches VALUES(?,?,?,?,?)',m.id,m.id,received,short?Math.min(received+conversation.debounceMs,received+conversation.maxWaitMs):now,short?0:1);
+          this.run('INSERT INTO batch_members VALUES(?,?)',m.id,m.id);
+        }
       }
-      for(const sub of this.all('SELECT * FROM subscriptions WHERE active=1 AND expires>? AND platform=?',now,m.platform))this.event(sub,m,now);
+      const root=this.message(this.batchId(m.id));
+      for(const sub of this.all('SELECT * FROM subscriptions WHERE active=1 AND expires>? AND platform=?',now,m.platform))this.event(sub,root,now);
       return m.id;
     });
   }
   event(sub,m,now=Date.now()){
+    if(this.batchId(m.id)!==m.id)return;
     const id='evt_'+hash(sub.id+':'+m.id);
     const body={eventId:id,name:'message.created',timestamp:iso(m.created),data:{message_id:m.id,platform:m.platform},cursor:null};
-    this.run('INSERT OR IGNORE INTO events(id,sub_id,message_id,body,queued_at) VALUES(?,?,?,?,?)',id,sub.id,m.id,canonical(body),now);
+    this.run('INSERT OR IGNORE INTO events(id,sub_id,message_id,body,queued_at,due) VALUES(?,?,?,?,?,?)',id,sub.id,m.id,canonical(body),now,this.one('SELECT ready_at FROM message_batches WHERE id=?',m.id)?.ready_at??0);
   }
   message(id){const r=this.one('SELECT * FROM messages WHERE id=?',id);ensure(r,'message_not_found');return r;}
-  publicMessage(id){const m=this.message(id);return {id:m.id,platform:m.platform,text:m.text,media:JSON.parse(m.media),created:iso(m.created),expires:iso(m.expires),replies:this.all('SELECT id,phase,state,provider_id,error FROM replies WHERE message_id=?',id)};}
+  batchId(id){return this.one('SELECT batch_id FROM batch_members WHERE message_id=?',id)?.batch_id??id;}
+  batchMessages(id){const root=this.batchId(id);const rows=this.all('SELECT m.* FROM messages m JOIN batch_members b ON b.message_id=m.id WHERE b.batch_id=? ORDER BY m.rowid',root);return rows.length?rows:[this.message(root)];}
+  replyRoute(id){const root=this.batchId(id);return this.message(this.one('SELECT latest_id FROM message_batches WHERE id=?',root)?.latest_id??root);}
+  seal(id,now){
+    const root=this.batchId(id),batch=this.one('SELECT * FROM message_batches WHERE id=?',root);
+    ensure(!batch||batch.ready_at<=now,'batch_collecting');
+    this.run('UPDATE message_batches SET sealed=1 WHERE id=?',root);return root;
+  }
+  publicMessage(id){const root=this.batchId(id),parts=this.batchMessages(root),m=parts[0],last=this.replyRoute(root);return {id:root,platform:m.platform,text:parts.map(p=>p.text).filter(Boolean).join('\n'),media:parts.flatMap(p=>JSON.parse(p.media).map(f=>({...f,message_id:p.id}))),created:iso(m.created),expires:iso(last.expires),message_ids:parts.map(p=>p.id),batch_count:parts.length,replies:this.all('SELECT id,phase,state,provider_id,error FROM replies WHERE message_id=?',root)};}
   pendingPage(cursor='0',now=Date.now(),platforms=['qq','weixin']){
     ensure(typeof cursor==='string'&&/^(0|[1-9][0-9]{0,14})$/.test(cursor),'invalid_cursor');
-    const rows=this.all("SELECT m.rowid position,m.id FROM messages m WHERE m.rowid>? AND m.expires>? AND ((m.platform='qq' AND ?=1) OR (m.platform='weixin' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM replies r WHERE r.message_id=m.id AND ((r.phase='final' AND r.state IN ('accepted','rejected','cancelled')) OR (r.phase='ack' AND r.state IN ('rejected','cancelled')))) ORDER BY m.rowid LIMIT 51",Number(cursor),now,Number(platforms.includes('qq')),Number(platforms.includes('weixin')));
+    const rows=this.all("SELECT m.rowid position,m.id FROM messages m LEFT JOIN message_batches b ON b.id=m.id WHERE m.rowid>? AND COALESCE((SELECT expires FROM messages WHERE id=b.latest_id),m.expires)>? AND (b.ready_at IS NULL OR b.ready_at<=?) AND NOT EXISTS(SELECT 1 FROM batch_members WHERE message_id=m.id AND batch_id<>m.id) AND ((m.platform='qq' AND ?=1) OR (m.platform='weixin' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM replies r WHERE r.message_id=m.id AND ((r.phase='final' AND r.state IN ('accepted','rejected','cancelled')) OR (r.phase='ack' AND r.state IN ('rejected','cancelled')))) ORDER BY m.rowid LIMIT 51",Number(cursor),now,now,Number(platforms.includes('qq')),Number(platforms.includes('weixin')));
     return {messages:rows.slice(0,50).map(r=>this.publicMessage(r.id)),next_cursor:rows.length>50?String(rows[49].position):null};
   }
   enqueue(id,phase,payload,now=Date.now()){
@@ -79,7 +117,7 @@ export class Store {
       this.message(id);ensure(['ack','final'].includes(phase));
       const body=canonical(payload),existing=this.one('SELECT * FROM replies WHERE message_id=? AND phase=?',id,phase);
       if(existing){ensure(existing.payload===body,'reply_conflict');return {id:existing.id,state:existing.state};}
-      if(phase==='final')ensure(this.one("SELECT id FROM replies WHERE message_id=? AND phase='ack'",id),'ack_required');
+      if(phase==='ack')ensure(!this.one("SELECT id FROM replies WHERE message_id=? AND phase='final'",id),'final_already_queued');
       const rid='reply_'+hash(id+':'+phase);this.run('INSERT INTO replies(id,message_id,phase,payload,queued_at) VALUES(?,?,?,?,?)',rid,id,phase,body,now);
       return {id:rid,state:'pending'};
     });
@@ -104,7 +142,7 @@ export class Store {
     const row=this.one("SELECT id,platform,state,attempts,due,queued_at,expires,started_at,last_started_at,accepted_at,error,json_extract(payload,'$.context_mode') context_mode FROM notifications WHERE id=?",id);
     ensure(row,'notification_not_found');return {...row,state:row.state==='pending'?'queued':row.state,retries:Math.max(0,row.attempts-1),phone_delivery:'unknown'};
   }
-  markRead(id,now){this.run('INSERT INTO message_timing(message_id,dot_read_at) VALUES(?,?) ON CONFLICT(message_id) DO UPDATE SET dot_read_at=COALESCE(dot_read_at,excluded.dot_read_at)',id,now);}
+  markRead(id,now){this.seal(id,now);for(const m of this.batchMessages(id))this.run('INSERT INTO message_timing(message_id,dot_read_at) VALUES(?,?) ON CONFLICT(message_id) DO UPDATE SET dot_read_at=COALESCE(dot_read_at,excluded.dot_read_at)',m.id,now);}
   timing(id){
     const m=this.one('SELECT m.id,m.platform,m.created,t.received_at,t.dot_read_at FROM messages m LEFT JOIN message_timing t ON t.message_id=m.id WHERE m.id=?',id);ensure(m,'message_not_found');
     const summarize=row=>({...row,retries:Math.max(0,row.attempts-1),durations_ms:{queue_to_first_send:elapsed(row.queued_at,row.started_at),last_send_to_accept:elapsed(row.last_started_at,row.accepted_at),first_send_to_accept:elapsed(row.started_at,row.accepted_at)}});

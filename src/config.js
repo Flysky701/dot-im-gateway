@@ -5,11 +5,16 @@ export const example = {
   mode: 'offline', host: '127.0.0.1', port: 8788, dataDir: './runtime', principal: 'owner',
   tokenEnv: 'DOT_GATEWAY_TOKEN', allowSubscriptions: false, callbackHosts: [],
   maxMediaBytes: 4194304, maxStoredMediaBytes: 268435456, mediaRetentionHours: 168,
+  conversation: {debounceMs: 2000, maxWaitMs: 8000},
   qq: {enabled: false, ownerId: '', appId: '', secretEnv: 'DOT_QQ_SECRET', apiProfile: 'documented', gatewayHosts: [], replyTtlMs: 240000},
   weixin: {enabled: false, ownerId: '', botId: '', tokenEnv: 'DOT_WEIXIN_TOKEN', apiHost: 'ilinkai.weixin.qq.com', cdnHost: 'novac2c.cdn.weixin.qq.com', replyTtlMs: 86400000}
 };
 export function validate(c) {
   exact(c, Object.keys(example));
+  c.conversation ??= {...example.conversation};
+  exact(c.conversation, Object.keys(example.conversation));
+  ensure(Number.isInteger(c.conversation.debounceMs)&&c.conversation.debounceMs>=0&&c.conversation.debounceMs<=5000,'invalid_debounce');
+  ensure(Number.isInteger(c.conversation.maxWaitMs)&&c.conversation.maxWaitMs>=c.conversation.debounceMs&&c.conversation.maxWaitMs<=15000,'invalid_batch_wait');
   ensure(['offline','live'].includes(c.mode) && c.host === '127.0.0.1', 'loopback_required');
   ensure(Number.isInteger(c.port) && c.port >= 1024 && c.port <= 65535);
   str(c.principal); str(c.dataDir, 2048); str(c.tokenEnv);
