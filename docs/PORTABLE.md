@@ -7,6 +7,7 @@
 | 运行位置 | Windows 本机，或 Linux 前台 | 已用 `scripts/server-bootstrap.sh` 安装常驻服务的 Linux 服务器 |
 | 绑定后 | 程序自己桥接消息，窗口关闭即断开 | 把绑定结果写入常驻服务后自动退出，由 systemd 长期运行 |
 | 凭据 | 只在内存 | 常驻服务的 `runtime.env` / `tunnel-runtime.env`（0600） |
+| 消息类型 | 仅本人文字 | QQ 仅文字；微信文字和图片/PDF（含 `put_media` / `read_media` 工具） |
 | Events 自动唤醒 | 不开放 | 开启（回调只允许 chatgpt.com / openai.com 及其子域名） |
 | 断线 | 结束，重新运行 | 服务自动重连；凭据失效时重新运行 handoff |
 
@@ -19,7 +20,7 @@
 
 ## 获取
 
-从 GitHub Release 下载对应文件及同名 `.sha256`，核对后再运行。Release 由 [release 工作流](../.github/workflows/release.yml) 在推送 `v*` 标签时自动测试、构建、自检并生成草稿，维护者审核后发布。服务器上的 `scripts/server-bootstrap.sh` 会自动下载并校验与源码版本一致的 Release；没有已发布的 Release 时在服务器上按固定依赖构建。
+从 GitHub Release 下载对应文件及同名 `.sha256`，核对后再运行。Release 由 [release 工作流](../.github/workflows/release.yml) 在推送 `v*` 标签时自动测试、构建、自检并生成草稿，维护者审核后发布。服务器上的 `scripts/server-bootstrap.sh` 只使用与当前源码提交完全一致的 Release（核对 `.sha256` 和 `.build.json` 的 `sourceCommit`），否则在服务器上按固定依赖构建，避免新服务配旧连接程序。已发布的 Release 不会被工作流覆盖。
 
 运行 `dot-im-connect --self-test` 只验证内置运行时、SQLite、官方客户端能启动及临时目录清理，不连接账号。
 

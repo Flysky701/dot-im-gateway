@@ -2,7 +2,8 @@ name: release
 # Push a tag such as v0.1.1 (or run manually with an existing tag) to build the
 # single-file connectors on clean runners and attach them, with SHA256 files, to a
 # DRAFT release. Review the draft and publish it yourself; server-bootstrap.sh only
-# downloads published assets and verifies the .sha256 file before use.
+# downloads published assets and verifies the .sha256 file and source commit before use.
+# A published release is never modified: rerunning for it fails instead of overwriting.
 on:
   push:
     tags: ['v*']
@@ -41,10 +42,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Create draft release if missing
+      # Never touch a published release: a rerun may only refill a draft.
+      - name: Create draft release, or refuse if already published
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Single-file connectors for $TAG. Verify the .sha256 files. See docs/PORTABLE.md and THIRD_PARTY_NOTICES.md."
+        run: |
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            draft="$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)"
+            if [ "$draft" != true ]; then echo "::error::$TAG is already published; bump the version and tag again instead of rebuilding"; exit 1; fi
+          else
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Single-file connectors for $TAG. Verify the .sha256 files. See docs/PORTABLE.md and THIRD_PARTY_NOTICES.md."
+          fi
   build:
     needs: draft
     timeout-minutes: 15
@@ -78,4 +86,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" dist/dot-im-connect-* -R "$GITHUB_REPOSITORY" --clobber
+        run: |
+          # Re-check right before uploading: the draft may have been published meanwhile.
+          draft="$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)"
+          if [ "$draft" != true ]; then echo "::error::$TAG was published during the build; not overwriting its assets"; exit 1; fi
+          gh release upload "$TAG" dist/dot-im-connect-* -R "$GITHUB_REPOSITORY" --clobber

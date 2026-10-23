@@ -58,23 +58,39 @@ fi
 step "4/6 获取单文件连接程序"
 VERSION="$(node -p 'require("./package.json").version')"
 COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+[ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] || COMMIT=unknown
 BIN="$TOOLS/dot-im-connect-linux-x64"
+URL="https://github.com/${REPO}/releases/download/v${VERSION}/dot-im-connect-linux-x64"
+# The connector must come from exactly the same source commit as the service:
+# a Release binary is used only when its build record names this commit.
+built_from(){ node -e 'const m=require(process.argv[1]);process.stdout.write(String(m.sourceCommit||"")+" "+String(m.executableSha256||""))' "$1" 2>/dev/null || true; }
+sha(){ sha256sum "$1" | cut -d' ' -f1; }
+rm -f "$BIN.next" "$BIN.next.sha256" "$BIN.next.build.json"
 if [ -n "${CONNECT_BINARY:-}" ]; then
   cp "$CONNECT_BINARY" "$BIN.next"
-elif fetch "https://github.com/${REPO}/releases/download/v${VERSION}/dot-im-connect-linux-x64" "$BIN.next" 2>/dev/null \
-  && fetch "https://github.com/${REPO}/releases/download/v${VERSION}/dot-im-connect-linux-x64.sha256" "$BIN.sha256" 2>/dev/null; then
-  expected="$(cut -d' ' -f1 "$BIN.sha256")"; actual="$(sha256sum "$BIN.next" | cut -d' ' -f1)"
-  [ "$expected" = "$actual" ] || fail release_checksum_mismatch
-  step "   使用 GitHub Release v${VERSION}（SHA256 ${actual}）"
+  step "   使用指定的 CONNECT_BINARY（SHA256 $(sha "$BIN.next")）"
+elif [ "$COMMIT" != unknown ] && [ -x "$BIN" ] && [ "$(built_from "$BIN.build.json")" = "$COMMIT $(sha "$BIN")" ]; then
+  step "   已有与提交 ${COMMIT:0:12} 一致的连接程序，跳过下载"
+elif [ "$COMMIT" != unknown ] && fetch "$URL" "$BIN.next" 2>/dev/null && fetch "$URL.sha256" "$BIN.next.sha256" 2>/dev/null \
+  && fetch "$URL.build.json" "$BIN.next.build.json" 2>/dev/null \
+  && [ "$(cut -d' ' -f1 "$BIN.next.sha256")" = "$(sha "$BIN.next")" ] \
+  && [ "$(built_from "$BIN.next.build.json")" = "$COMMIT $(sha "$BIN.next")" ]; then
+  step "   使用 GitHub Release v${VERSION}（提交 ${COMMIT:0:12}，SHA256 $(sha "$BIN.next")）"
 else
-  step "   没有可用的 Release，按固定依赖在本机构建（约 1–3 分钟）"
-  rm -f "$BIN.next"
+  [ "$COMMIT" = unknown ] && step "   源码不是干净的 Git 检出，无法核对 Release 来源" \
+    || step "   没有与提交 ${COMMIT:0:12} 对应的已发布 Release"
+  step "   按固定依赖在本机构建（约 1–3 分钟，需要访问 npm 和 GitHub）"
+  rm -f "$BIN.next" "$BIN.next.sha256" "$BIN.next.build.json"
   npm ci --prefix packaging --ignore-scripts --no-audit --no-fund >/dev/null
   python3 packaging/fetch.py >/dev/null
   node packaging/build.js >/dev/null
-  cp dist/dot-im-connect-linux-x64 "$BIN.next"
+  cp dist/dot-im-connect-linux-x64 "$BIN.next"; cp dist/dot-im-connect-linux-x64.build.json "$BIN.next.build.json"
 fi
-chmod 700 "$BIN.next" && mv "$BIN.next" "$BIN"
+if [ -f "$BIN.next" ]; then
+  chmod 700 "$BIN.next" && mv "$BIN.next" "$BIN"
+  if [ -f "$BIN.next.build.json" ]; then mv "$BIN.next.build.json" "$BIN.build.json"; else rm -f "$BIN.build.json"; fi
+fi
+rm -f "$BIN.next.sha256"
 
 step "5/6 单文件离线自检"
 "$BIN" --self-test >/dev/null || fail self_test_failed

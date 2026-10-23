@@ -14,6 +14,9 @@ export const QQ_GATEWAY_HOSTS=['api.bot.qq.com','api.sgroup.qq.com'];
 export const TUNNEL_HEALTH_PORT=8790;
 export const GATEWAY_UNIT='dot-im-gateway.service',TUNNEL_UNIT='dot-im-tunnel.service';
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
+// Weixin iLink IDs are opaque, e.g. "o9cq80...@im.wechat" (user) and "...@im.bot" (bot):
+// accept any printable text without whitespace, as the official login returns it.
+const wxId=v=>typeof v==='string'&&/^[^\s\u0000-\u001f\u007f]{1,256}$/u.test(v);
 const sha=b=>createHash('sha256').update(b).digest('hex');
 
 export function safePrefix(raw){
@@ -65,8 +68,8 @@ WantedBy=default.target
 export function planHandoff(data,{config,runtimeEnv=new Map(),tunnelEnv=new Map(),random=()=>randomBytes(32).toString('hex')}){
   ensure(['qq','weixin'].includes(data?.platform),'platform_required');
   const c=structuredClone(config),p=data.platform,b=data[p];
-  ensure(b&&id(b.ownerId)&&typeof (p==='qq'?b.secret:b.token)==='string','handoff_incomplete');
-  const bot=p==='qq'?b.appId:b.botId,botKey=p==='qq'?'appId':'botId';ensure(id(bot)||(p==='weixin'&&typeof bot==='string'&&bot.length<=256&&!/[\s'"]/.test(bot)),'handoff_incomplete');
+  const valid=p==='qq'?id:wxId,bot=p==='qq'?b?.appId:b?.botId,botKey=p==='qq'?'appId':'botId';
+  ensure(b&&valid(b.ownerId)&&valid(bot)&&typeof (p==='qq'?b.secret:b.token)==='string','handoff_incomplete');
   if(c[p].ownerId)ensure(c[p].ownerId===b.ownerId&&c[p][botKey]===bot,'different_owner_requires_new_data_directory');
   c.mode='live';c.allowSubscriptions=true;c.callbackHosts=[...new Set([...c.callbackHosts,...DEFAULT_CALLBACK_HOSTS])];
   if(p==='qq')Object.assign(c.qq,{enabled:true,ownerId:b.ownerId,appId:bot,apiProfile:'documented',gatewayHosts:[...new Set([...c.qq.gatewayHosts,...QQ_GATEWAY_HOSTS])]});
@@ -94,13 +97,17 @@ function defaultLinger(){const r=spawnSync('loginctl',['show-user',os.userInfo()
 
 export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=defaultSystemctl,probe=defaultProbe,linger=defaultLinger,random,deadlineMs=45000,pause=ms=>new Promise(r=>setTimeout(r,ms))}){
   safePrefix(prefix);
-  const file=name=>path.join(prefix,name),unitDir=path.join(home,'.config/systemd/user');
+  const file=name=>path.join(prefix,name),unitDir=path.join(home,'.config/systemd/user'),unitPath=path.join(unitDir,TUNNEL_UNIT);
   const read=name=>fs.existsSync(file(name))?fs.readFileSync(file(name),'utf8'):'';
+  // Every check runs before anything is stopped or written: a unit of another
+  // installation is never touched, not even paused.
   const installed=()=>{
     for(const p of [prefix,file('current'),file('config.json')])ensure(fs.existsSync(p),'service_not_installed');
     ensure(!fs.lstatSync(prefix).isSymbolicLink()&&fs.lstatSync(file('current')).isSymbolicLink()&&fs.existsSync(file('.dot-im-gateway')),'service_not_installed');
     const gatewayUnit=path.join(unitDir,GATEWAY_UNIT);
     ensure(fs.existsSync(gatewayUnit)&&fs.readFileSync(gatewayUnit,'utf8').split('\n').includes(`WorkingDirectory=${prefix}/current`),'gateway_unit_missing');
+    const tunnelStat=fs.lstatSync(unitPath,{throwIfNoEntry:false});
+    if(tunnelStat)ensure(!tunnelStat.isSymbolicLink()&&fs.readFileSync(unitPath,'utf8').startsWith(`# Managed by dot-im-gateway handoff for prefix=${prefix}\n`),'unrelated_tunnel_unit_exists');
     return JSON.parse(read('config.json'));
   };
   let stopped=[],committed=false;
@@ -115,30 +122,47 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
       installed();stopped=[];committed=false;
       for(const unit of [TUNNEL_UNIT,GATEWAY_UNIT])if(systemctl('is-active','--quiet',unit)===0){ensure(systemctl('stop',unit)===0,'service_stop_failed');stopped.push(unit);}
     },
+    // Restart what prepare() paused, with whatever configuration is on disk (the
+    // previous one after a rollback). Nothing to do after a successful commit.
     async restore(){if(committed)return;for(const unit of [GATEWAY_UNIT,TUNNEL_UNIT])if(stopped.includes(unit))systemctl('start',unit);stopped=[];},
-    async commit(data){
+    // All-or-nothing: on any failure or cancellation before both services are
+    // healthy, every changed file and unit state is put back exactly as before.
+    async commit(data,{signal}={}){
       const raw=installed();
       const plan=planHandoff(data,{config:raw,runtimeEnv:parseEnv(read('runtime.env')),tunnelEnv:parseEnv(read('tunnel-runtime.env')),random});
-      const unitPath=path.join(unitDir,TUNNEL_UNIT);
-      if(fs.existsSync(unitPath))ensure(!fs.lstatSync(unitPath).isSymbolicLink()&&fs.readFileSync(unitPath,'utf8').startsWith(`# Managed by dot-im-gateway handoff for prefix=${prefix}\n`),'unrelated_tunnel_unit_exists');
       ensure(Buffer.isBuffer(tunnelBinary)&&tunnelBinary.length>0,'tunnel_binary_missing');
-      // Files first, then systemd. Secrets are only ever written with 0600.
-      fs.mkdirSync(file('bin'),{recursive:true,mode:0o700});
-      const client=file('bin/tunnel-client');if(!fs.existsSync(client)||sha(fs.readFileSync(client))!==sha(tunnelBinary))writePrivate(client,tunnelBinary,0o700);
-      writePrivate(file('runtime.env'),envText(plan.runtimeEnv));
-      writePrivate(file('tunnel-runtime.env'),envText(plan.tunnelEnv));
-      writePrivate(file('config.json'),JSON.stringify(plan.config,null,2)+'\n');
-      fs.mkdirSync(unitDir,{recursive:true});writePrivate(unitPath,tunnelUnit(prefix,plan.config.port),0o644);
-      committed=true;
-      for(const args of [['daemon-reload'],['enable',GATEWAY_UNIT],['enable',TUNNEL_UNIT],['restart',GATEWAY_UNIT],['restart',TUNNEL_UNIT]])ensure(systemctl(...args)===0,'systemctl_failed');
-      const deadline=Date.now()+deadlineMs;let gateway=false,tunnel=false;
-      while(Date.now()<deadline&&!(gateway&&tunnel)){
-        if(!gateway){const r=await probe(`http://127.0.0.1:${plan.config.port}/healthz`);try{gateway=r.status===200&&JSON.parse(r.body).mode==='live';}catch{}}
-        if(gateway&&!tunnel)tunnel=(await probe(`http://127.0.0.1:${TUNNEL_HEALTH_PORT}/readyz`)).status===200;
-        if(!(gateway&&tunnel))await pause(1000);
+      const live=()=>ensure(!signal?.aborted,'handoff_cancelled');live();
+      const client=file('bin/tunnel-client'),targets=[client,file('runtime.env'),file('tunnel-runtime.env'),file('config.json'),unitPath];
+      const backup=targets.map(f=>[f,fs.existsSync(f)?{data:fs.readFileSync(f),mode:fs.statSync(f).mode&0o777}:null]);
+      const wasEnabled=Object.fromEntries([GATEWAY_UNIT,TUNNEL_UNIT].map(u=>[u,fs.existsSync(path.join(unitDir,u))&&systemctl('is-enabled','--quiet',u)===0]));
+      try{
+        // Files first, then systemd. Secrets are only ever written with 0600.
+        fs.mkdirSync(file('bin'),{recursive:true,mode:0o700});
+        if(!fs.existsSync(client)||sha(fs.readFileSync(client))!==sha(tunnelBinary))writePrivate(client,tunnelBinary,0o700);
+        writePrivate(file('runtime.env'),envText(plan.runtimeEnv));
+        writePrivate(file('tunnel-runtime.env'),envText(plan.tunnelEnv));
+        writePrivate(file('config.json'),JSON.stringify(plan.config,null,2)+'\n');
+        fs.mkdirSync(unitDir,{recursive:true});writePrivate(unitPath,tunnelUnit(prefix,plan.config.port),0o644);
+        for(const args of [['daemon-reload'],['enable',GATEWAY_UNIT],['enable',TUNNEL_UNIT],['restart',GATEWAY_UNIT],['restart',TUNNEL_UNIT]]){live();ensure(systemctl(...args)===0,'systemctl_failed');}
+        const deadline=Date.now()+deadlineMs;let gateway=false,tunnel=false;
+        while(Date.now()<deadline&&!(gateway&&tunnel)){
+          live();
+          if(!gateway){const r=await probe(`http://127.0.0.1:${plan.config.port}/healthz`);try{gateway=r.status===200&&JSON.parse(r.body).mode==='live';}catch{}}
+          if(gateway&&!tunnel)tunnel=(await probe(`http://127.0.0.1:${TUNNEL_HEALTH_PORT}/readyz`)).status===200;
+          if(!(gateway&&tunnel))await pause(1000);
+        }
+        ensure(gateway,'gateway_not_healthy');ensure(tunnel,'tunnel_not_ready');live();
+        committed=true;
+        return {service:'running',platform:data.platform,events:'enabled',autostart:'enabled',linger:linger()};
+      }catch(e){
+        // Roll back: stop what this attempt started, undo new enablement while the
+        // unit file still exists, then restore every file byte-for-byte.
+        for(const unit of [TUNNEL_UNIT,GATEWAY_UNIT])systemctl('stop',unit);
+        for(const unit of [TUNNEL_UNIT,GATEWAY_UNIT])if(!wasEnabled[unit]&&fs.existsSync(path.join(unitDir,unit)))systemctl('disable',unit);
+        for(const [f,b] of backup){try{if(b)writePrivate(f,b.data,b.mode);else fs.rmSync(f,{force:true});}catch{}}
+        systemctl('daemon-reload');
+        throw e;
       }
-      ensure(gateway,'gateway_not_healthy');ensure(tunnel,'tunnel_not_ready');
-      return {service:'running',platform:data.platform,events:'enabled',autostart:'enabled',linger:linger()};
     }
   };
 }

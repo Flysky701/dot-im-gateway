@@ -1,5 +1,6 @@
 # 阶段记录
 
+- 2026-10-23 交叉评审修复（v0.1.1）：handoff 接受微信官方 `…@im.wechat` / `…@im.bot` 身份（仍拒空白和控制字符，QQ 保持严格）；提交改为全有或全无——失败或取消时停止本次启动的服务、只禁用本次新启用的 unit、逐字节恢复二进制/env/config/unit（含权限）后再恢复原运行状态；Ctrl+C/停止在交接中途优先，不再写入；外部 Tunnel unit 在暂停任何服务前就被拒绝；页面与 Skill 写明 QQ 仅文字、微信文字和图片/PDF；Release 已发布则拒绝重跑覆盖；bootstrap 只使用 `sourceCommit` 与当前检出一致的 Release 二进制，否则本机构建，Skill 默认检出最新版本标签。Node 93 项、Python 14 项通过。
 - 2026-10-23 自动化改造（v0.1.1）：明确「单文件=一次性入口，服务器=常驻连接」。新增 `--handoff PREFIX`：单文件绑定成功后不启动临时 Tunnel，而是把凭据写入常驻服务（0600）、切 live、开启订阅、安装带标记的 `dot-im-tunnel.service`，重启并等待健康；失败恢复原服务。身份绑定改为按平台记录，可在同一安装上追加平台，自动迁移旧记录。回调白名单支持 `.域名` 仅匹配子域名，handoff 默认允许 chatgpt.com / openai.com。新增 `scripts/server-bootstrap.sh`（固定 Node、安装/升级、取 Release 或构建）、`scripts/server-status.sh`、release 工作流（草稿 Release + SHA256）。两个 Skill 重写为新手全自动流程。离线测试 Node 85+、Python 14 通过；handoff 尚未在真实服务器验收。
 - 2026-10-22 后续按用户收缩为一次性连接程序，已撤销未提交的管理后台草稿。新增 Node SEA 单文件入口，Windows 包约 98 MiB，内置 Node/SQLite/QR/官方客户端；本机无网络自检通过。一次运行一个渠道，页面完成后关闭，传输进程留在原终端；不保存凭据、不设自启、不开 Events。新增入口需独立真人验收，不继承此前测试程序的真人通过结论。
 

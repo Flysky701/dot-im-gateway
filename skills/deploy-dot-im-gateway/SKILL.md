@@ -31,7 +31,7 @@ description: Fully automated server path for beginners. Over the user's existing
 
 先问清两件事：服务器登录方式（`ssh <别名>` 或 `用户名@地址`）、平台（QQ 或微信，以后可以再加另一个）。然后发：
 
-> 我将为你：① 在服务器 `<HOST>` 的当前用户下安装 dot-im-gateway（不需要 root，目录 `~/.local/lib/dot-im-gateway`）；② 把机器人凭据和 Tunnel 运行密钥保存在该服务器上只有你能读的文件里（权限 0600）；③ 设置崩溃自动重启、断线重连和开机自启（可能需要你输入一次 sudo 密码）；④ 开启来信事件，只允许推送到 chatgpt.com / openai.com；⑤ 只处理你本人发给自己机器人的私聊文字。之后随时可以一条命令卸载，数据会保留。回复「同意」开始。
+> 我将为你：① 在服务器 `<HOST>` 的当前用户下安装 dot-im-gateway（不需要 root，目录 `~/.local/lib/dot-im-gateway`）；② 把机器人凭据和 Tunnel 运行密钥保存在该服务器上只有你能读的文件里（权限 0600）；③ 设置崩溃自动重启、断线重连和开机自启（可能需要你输入一次 sudo 密码）；④ 开启来信事件，只允许推送到 chatgpt.com / openai.com；⑤ 只处理你本人发给自己机器人的私聊：QQ 仅文字；微信是文字和图片/PDF（单个不超过 4 MiB，在服务器保存 7 天），dot 也能用图片/PDF 回复你。之后随时可以一条命令卸载，数据会保留。回复「同意」开始。
 
 下文 `<HOST>` 指用户给出的 SSH 目标。
 
@@ -49,19 +49,19 @@ ssh -o BatchMode=yes -o ConnectTimeout=15 <HOST> 'uname -sm; id -un; id -u; syst
 
 ## 第 2 步：拉取固定版本并一键安装
 
-在用户电脑上取得要部署的提交号并记录（汇报时要用）：
+先在服务器上取得源码，并列出可选版本（最新的 `v*` 标签和 main 的最新提交）：
 
 ```sh
-COMMIT=$(git ls-remote https://github.com/Flysky701/dot-im-gateway refs/heads/main | cut -f1)
+ssh <HOST> 'D=$HOME/dot-im-gateway-src; [ -d $D/.git ] || git clone -q https://github.com/Flysky701/dot-im-gateway $D; cd $D && git fetch -q --tags --force origin && echo "tag=$(git tag --sort=-v:refname -l "v*" | head -1)" && echo "main=$(git rev-parse origin/main)"'
 ```
 
-然后在服务器上安装（可重复运行；已安装并在用时会自动备份后升级）：
+`REF` 默认用输出的 `tag`（有对应 Release 时可直接下载与之匹配的连接程序，省去构建）；没有标签，或用户明确要最新开发版时，用 `main` 的提交号。然后安装（可重复运行；已安装并在用时会自动备份后升级）：
 
 ```sh
-ssh <HOST> "set -e; D=\$HOME/dot-im-gateway-src; [ -d \$D/.git ] || git clone -q https://github.com/Flysky701/dot-im-gateway \$D; cd \$D; git fetch -q origin; git checkout -q --detach $COMMIT; bash scripts/server-bootstrap.sh"
+ssh <HOST> 'cd ~/dot-im-gateway-src && git checkout -q --detach <REF> && echo "commit=$(git rev-parse HEAD)" && bash scripts/server-bootstrap.sh'
 ```
 
-[server-bootstrap.sh](../../scripts/server-bootstrap.sh) 会：检查系统 → 安装固定版本 Node 24.21.0（校验 SHA256，只装在用户目录）→ 离线自检并安装服务 → 下载已发布 Release 的单文件程序并校验 SHA256（没有 Release 时在服务器上构建，约 1～3 分钟）→ 自检。它不接触任何账号凭据。最后一行 JSON 里记下 `prefix`、`connect_binary`、`linger`。以 `STOP:` 开头的输出给出了原因和 `HINT`，照做后重跑。
+记下输出的 `commit`，汇报时要用。[server-bootstrap.sh](../../scripts/server-bootstrap.sh) 会：检查系统 → 安装固定版本 Node 24.21.0（校验 SHA256，只装在用户目录）→ 离线自检并安装或升级服务 → 取得**与该提交完全一致**的单文件程序（Release 的 `.sha256` 和 `.build.json` 里的源码提交都对上才使用，否则在服务器上按固定依赖构建，约 1～3 分钟）→ 自检。它不接触任何账号凭据。最后一行 JSON 里记下 `prefix`、`connect_binary`、`linger`。以 `STOP:` 开头的输出给出了原因和 `HINT`，照做后重跑。
 
 ## 第 3 步：开机自启（linger）
 
@@ -153,7 +153,7 @@ ChatGPT 里看不到 Tunnel：Tunnel 没关联到这个 ChatGPT 工作区，或�
 | 看日志 | `ssh <HOST> 'journalctl --user -u dot-im-gateway -u dot-im-tunnel -n 100 --no-pager'`（日志不含消息正文和密钥） |
 | 重新扫码、换密钥、凭据失效 | 重复第 5 步。换 Tunnel 或运行密钥时三项都重新填写 |
 | 再加另一个平台 | 重复第 5 步，选另一个平台；两个平台共用同一服务；再做第 6 步第 5 点的订阅 |
-| 升级 | 取得新 `COMMIT` 后重复第 2 步（自动备份、保留数据和凭据，重启服务），再运行状态检查 |
+| 升级 | 重复第 2 步，选新的 `REF`（自动备份、保留数据和凭据，重启服务，并换上同一提交的连接程序），再运行状态检查 |
 | 回滚 | `ssh <HOST> 'cd ~/dot-im-gateway-src && PATH=$HOME/.local/share/dot-im-gateway-tools/node-v24.21.0-linux-x64/bin:$PATH python3 scripts/deploy.py rollback --apply'` |
 | 卸载（需用户确认） | 把上一行的 `rollback` 换成 `uninstall`：停止并移除两个服务，保留数据、配置和凭据文件。要彻底删除凭据，再经用户确认删除 `~/.local/lib/dot-im-gateway` |
 | 换绑另一个 QQ 号/微信号或机器人 | 同一数据目录不允许换人（错误码 `different_owner_requires_new_data_directory`），防止旧消息发给别人。经用户确认后先卸载，再用新目录重装：`PREFIX=$HOME/.local/lib/dot-im-gateway-2 bash scripts/server-bootstrap.sh`，之后第 5 步改用新目录 |

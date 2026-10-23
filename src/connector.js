@@ -31,6 +31,8 @@ export class Connector {
     // Non-secret handoff facts only; summary() fails closed when no service is installed.
     this.handoffInfo=handoff?handoff.summary():null;
     this.state=handoff?{stage:'idle',mode:'handoff',tunnelSaved:this.handoffInfo.tunnelSaved}:{stage:'idle'};this.commands=new EventEmitter();this.abort=new AbortController();this.task=null;this.tunnel=null;this.ending=false;this.tunnelTask=null;
+    // A stop (button or Ctrl+C) always wins over a pending handoff: nothing is saved.
+    this.stopRequested=false;this.commitAbort=new AbortController();
   }
   snapshot(){return structuredClone(this.state);}
   start(raw){
@@ -86,11 +88,11 @@ export class Connector {
     }).catch(e=>fail(e instanceof Fault?e.code:'connection_failed')).finally(async()=>{
       this.ending=true;this.abort.abort();if(this.tunnelTask)await this.tunnelTask;await this.tunnel?.stop();
       if(this.handoff){
-        if(handoffReady&&bound&&this.state.stage!=='failed'){
+        if(handoffReady&&bound&&this.state.stage!=='failed'&&!this.stopRequested){
           try{
-            const result=await this.handoff.commit({platform:input.platform,...(reuse?{}:{tunnelId:input.tunnelId,organizationId:input.organizationId,runtimeKey:input.runtimeKey}),[input.platform]:bound});
+            const result=await this.handoff.commit({platform:input.platform,...(reuse?{}:{tunnelId:input.tunnelId,organizationId:input.organizationId,runtimeKey:input.runtimeKey}),[input.platform]:bound},{signal:this.commitAbort.signal});
             this.state={stage:'handed_off',platform:input.platform,service:result.service,events:result.events,autostart:result.autostart,linger:result.linger};
-          }catch(e){this.state={stage:'failed',code:e instanceof Fault?e.code:'handoff_failed'};}
+          }catch(e){this.state=this.stopRequested?{stage:'stopped'}:{stage:'failed',code:e instanceof Fault?e.code:'handoff_failed'};}
         }
         try{await this.handoff.restore();}catch{}
       }
@@ -105,5 +107,5 @@ export class Connector {
     else {ensure(this.state.stage==='verify_code','confirmation_not_expected');ensure(/^[0-9]{1,12}$/.test(input.value),'invalid_verify_code');}
     this.state={stage:'connecting',platform:this.state.platform};this.commands.emit('line',input.value);return this.snapshot();
   }
-  async stop(){this.abort.abort();this.commands.emit('line','STOP');if(this.task)await this.task;else{this.state={stage:'stopped'};this.onEnd(this.snapshot());}}
+  async stop(){this.stopRequested=true;this.commitAbort.abort();this.abort.abort();this.commands.emit('line','STOP');if(this.task)await this.task;else{this.state={stage:'stopped'};this.onEnd(this.snapshot());}}
 }

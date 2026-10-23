@@ -13,7 +13,7 @@ sudo loginctl enable-linger "$USER"
 ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<BIN> --handoff <PREFIX> --port 8789 --no-browser'
 ```
 
-`server-bootstrap.sh` 检查 Linux x64、普通用户、`systemd --user`、Python 3.10+、curl/xz；把固定版本 Node 24.21.0（校验 SHA256）装到 `~/.local/share/dot-im-gateway-tools`，不改系统；离线自检后用 `deploy.py install --apply` 安装服务；下载与源码版本一致的 Release 单文件程序并校验 `.sha256`（没有已发布 Release 时按固定依赖本机构建）；最后输出一行 JSON，含 `prefix`、`connect_binary`、`linger` 和下一步命令。它不接触任何账号凭据。可用环境变量 `PREFIX`、`TOOLS`、`PORT`、`CONNECT_BINARY` 覆盖默认值。
+`server-bootstrap.sh` 检查 Linux x64、普通用户、`systemd --user`、Python 3.10+、curl/xz；把固定版本 Node 24.21.0（校验 SHA256）装到 `~/.local/share/dot-im-gateway-tools`，不改系统；离线自检后用 `deploy.py install --apply` 安装服务；取得与当前源码**提交完全一致**的单文件程序：Release 的 `.sha256` 和 `.build.json` 中的 `sourceCommit` 都匹配才使用，否则（含工作区有改动时）按固定依赖本机构建；已有同提交的程序时跳过；最后输出一行 JSON，含 `prefix`、`connect_binary`、`linger` 和下一步命令。它不接触任何账号凭据。可用环境变量 `PREFIX`、`TOOLS`、`PORT`、`CONNECT_BINARY` 覆盖默认值。
 
 handoff 的行为见 [单文件程序](PORTABLE.md#移交常驻服务--handoff)：写入 0600 凭据文件、切换 `mode=live`、开启订阅并合并默认回调白名单（`chatgpt.com`、`.chatgpt.com`、`openai.com`、`.openai.com`，以 `.` 开头只匹配子域名），安装带归属标记的 `dot-im-tunnel.service`，重启并等待两个服务健康。之后：
 
