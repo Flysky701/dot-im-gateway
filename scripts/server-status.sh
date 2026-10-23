@@ -10,7 +10,9 @@ NODE="$TOOLS/node-v24.21.0-linux-x64/bin/node"
 [ -x "$NODE" ] || NODE="$(command -v node || echo node)"
 export PREFIX NODE
 exec python3 - <<'PY'
-import json, os, subprocess, urllib.request
+import json, os, re, sqlite3, subprocess, time, urllib.request
+from pathlib import Path
+from contextlib import closing
 prefix, node = os.environ['PREFIX'], os.environ['NODE']
 def sh(*args):
     try:
@@ -37,14 +39,15 @@ try:
     queue = json.loads(sh(node, os.path.join(prefix, 'current/bin/gateway.js'), 'status', '--config', os.path.join(prefix, 'config.json')))
 except Exception:
     queue = None
-tunnel_hint = None
+tunnel_hint = tunnel_id = None
 try:
     with open(os.path.join(prefix, 'tunnel-runtime.env'), encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if line.startswith('CONTROL_PLANE_TUNNEL_ID='):
                 val = line.split('=', 1)[1].strip("'\"")
-                if val.startswith('tunnel_') and len(val) >= 13:
+                if re.fullmatch(r'tunnel_[A-Za-z0-9_-]{7,128}', val):
+                    tunnel_id = val
                     tunnel_hint = val[:13] + '...'
 except Exception:
     pass
@@ -65,6 +68,7 @@ r = {
     'gateway_health': status == 200, 'mode': mode,
     'tunnel_ready': get('http://127.0.0.1:8790/readyz')[0] == 200,
     'tunnel_hint': tunnel_hint,
+    'tunnel_id': tunnel_id,
     'control_plane': control_plane,
     'mcp_requests': mcp_requests,
     'platforms': [p for p in ('qq', 'weixin') if c.get(p, {}).get('enabled')],
@@ -73,5 +77,34 @@ r = {
     'queue': queue,
 }
 r['ok'] = r['gateway'] == 'active' and r['tunnel'] == 'active' and r['gateway_health'] and r['tunnel_ready'] and mode == 'live'
+# Read-only aggregate evidence. Never select message text, owners, callback URLs,
+# subscription secrets or provider IDs. Keep legacy queue/ok fields unchanged.
+setup = {p: {'bound': bool(c.get(p, {}).get('enabled') and c.get(p, {}).get('ownerId')),
+             'active_subscriptions': None, 'replies': None} for p in ('qq', 'weixin')}
+try:
+    database = Path(prefix, c.get('dataDir', 'data'), 'gateway.sqlite').resolve()
+    with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=1)) as db:
+        for p, evidence in setup.items():
+            evidence['active_subscriptions'] = db.execute(
+                'SELECT count(*) FROM subscriptions WHERE platform=? AND active=1 AND expires>?',
+                (p, int(time.time() * 1000))).fetchone()[0]
+            evidence['replies'] = [dict(phase=phase, state=state, count=count) for phase, state, count in db.execute(
+                "SELECT r.phase,r.state,count(*) FROM replies r JOIN messages m ON m.id=r.message_id "
+                "WHERE m.platform=? AND r.phase IN ('ack','final') AND r.state IN "
+                "('pending','sending','accepted','rejected','cancelled','uncertain') GROUP BY r.phase,r.state", (p,))]
+except (OSError, ValueError, sqlite3.Error):
+    pass
+for evidence in setup.values():
+    evidence['next_step'] = ('install' if not r['installed'] else
+                             'binding' if not evidence['bound'] else
+                             'service' if not r['ok'] else
+                             'inspect_subscription' if evidence['active_subscriptions'] is None else
+                             'subscription' if not evidence['active_subscriptions'] else
+                             'phone_confirmation')
+r['setup'] = setup
+if all(not evidence['bound'] for evidence in setup.values()):
+    r['setup_stage'] = 'install' if not r['installed'] else 'binding'
+else:
+    r['setup_stage'] = 'service_ready' if r['ok'] else 'service_attention'
 print(json.dumps(r, ensure_ascii=False))
 PY

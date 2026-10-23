@@ -10,6 +10,7 @@ set -euo pipefail
 umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/server-preflight.sh"
 PREFIX="${PREFIX:-$HOME/.local/lib/dot-im-gateway}"
 TOOLS="${TOOLS:-$HOME/.local/share/dot-im-gateway-tools}"
 REPO="${REPO:-Flysky701/dot-im-gateway}"
@@ -28,8 +29,7 @@ step "1/6 检查系统"
 command -v systemctl >/dev/null || fail systemd_required
 systemctl --user show-environment >/dev/null 2>&1 || fail user_systemd_unavailable \
   "用该用户的 SSH 登录会话运行；如仍失败，执行 sudo loginctl enable-linger $USER 后重新登录。"
-command -v python3 >/dev/null || fail python3_required "安装 python3 (>=3.10)，例如 sudo apt install -y python3。"
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' || fail python310_required
+select_python || fail python310_required "需要 Python >=3.10；优先用 PYTHON=/已有解释器路径 指定，不必升级系统 Python。"
 command -v curl >/dev/null || command -v wget >/dev/null || fail curl_required "安装 curl，例如 sudo apt install -y curl。"
 command -v tar >/dev/null && command -v xz >/dev/null || fail tar_xz_required "安装 xz，例如 sudo apt install -y xz-utils。"
 
@@ -44,16 +44,9 @@ fi
 export PATH="$NODE_DIR/bin:$PATH"
 [ "$(node --version)" = "v${NODE_VERSION}" ] || fail node_version_mismatch
 
-step "3/6 离线自检并安装常驻服务到 ${PREFIX}"
+step "3/6 检查源码依赖"
 cd "$ROOT"
 npm ci --offline --ignore-scripts --no-audit --no-fund >/dev/null
-if [ -f "$PREFIX/.dot-im-gateway" ] && [ -L "$PREFIX/current" ] && [ -f "$PREFIX/runtime.env" ]; then
-  # Already bound and running: switch to this commit with an automatic backup.
-  step "   已有在用的常驻服务：升级到当前提交（自动备份，数据和凭据保留）"
-  python3 scripts/deploy.py upgrade --prefix "$PREFIX" --apply >/dev/null
-else
-  python3 scripts/deploy.py install --prefix "$PREFIX" --apply >/dev/null
-fi
 
 step "4/6 获取单文件连接程序"
 VERSION="$(node -p 'require("./package.json").version')"
@@ -66,9 +59,14 @@ URL="https://github.com/${REPO}/releases/download/v${VERSION}/dot-im-connect-lin
 # modified files are recorded as "<commit>-dirty" and therefore never match.
 built_from(){ node -e 'const m=require(process.argv[1]);process.stdout.write(String(m.sourceCommit||"")+" "+String(m.executableSha256||""))' "$1" 2>/dev/null || true; }
 sha(){ sha256sum "$1" | cut -d' ' -f1; }
+mkdir -p "$TOOLS"
 rm -f "$BIN.next" "$BIN.next.sha256" "$BIN.next.build.json"
 if [ -n "${CONNECT_BINARY:-}" ]; then
+  [ "$COMMIT" != unknown ] && [ -f "$CONNECT_BINARY" ] \
+    && [ "$(built_from "$CONNECT_BINARY.build.json")" = "$COMMIT $(sha "$CONNECT_BINARY")" ] \
+    || fail connect_binary_source_mismatch "指定产物需附带同一干净提交的 .build.json 和匹配 SHA256。"
   cp "$CONNECT_BINARY" "$BIN.next"
+  cp "$CONNECT_BINARY.build.json" "$BIN.next.build.json"
   step "   使用指定的 CONNECT_BINARY（SHA256 $(sha "$BIN.next")）"
 elif [ "$COMMIT" != unknown ] && [ -x "$BIN" ] && [ "$(built_from "$BIN.build.json")" = "$COMMIT $(sha "$BIN")" ]; then
   step "   已有与提交 ${COMMIT:0:12} 一致的连接程序，跳过下载"
@@ -80,10 +78,11 @@ elif [ "$COMMIT" != unknown ] && fetch "$URL" "$BIN.next" 2>/dev/null && fetch "
 else
   [ "$COMMIT" = unknown ] && step "   源码不是干净的 Git 检出，无法核对 Release 来源" \
     || step "   没有与提交 ${COMMIT:0:12} 对应的已发布 Release"
-  step "   按固定依赖在本机构建（约 1–3 分钟，需要访问 npm 和 GitHub）"
   rm -f "$BIN.next" "$BIN.next.sha256" "$BIN.next.build.json"
+  build_memory_available || fail build_memory_low "可用内存加空闲 swap 不足 1.5 GiB；优先取得匹配产物或换构建环境，不自动改 swap。"
+  step "   按固定依赖在本机构建（需要访问 npm 和 GitHub）"
   npm ci --prefix packaging --ignore-scripts --no-audit --no-fund >/dev/null
-  python3 packaging/fetch.py >/dev/null
+  "$PYTHON" packaging/fetch.py >/dev/null
   node packaging/build.js >/dev/null
   cp dist/dot-im-connect-linux-x64 "$BIN.next"; cp dist/dot-im-connect-linux-x64.build.json "$BIN.next.build.json"
 fi
@@ -96,7 +95,15 @@ rm -f "$BIN.next.sha256"
 step "5/6 单文件离线自检"
 "$BIN" --self-test >/dev/null || fail self_test_failed
 
-step "6/6 完成"
+step "6/6 安装常驻服务到 ${PREFIX}"
+# Acquire and check the connector before changing an existing service. A missing
+# artifact or insufficient build memory must not leave a half-finished upgrade.
+if [ -f "$PREFIX/.dot-im-gateway" ] && [ -L "$PREFIX/current" ] && [ -f "$PREFIX/runtime.env" ]; then
+  step "   升级当前实例（自动备份，数据和凭据保留）"
+  "$PYTHON" scripts/deploy.py upgrade --prefix "$PREFIX" --apply >/dev/null
+else
+  "$PYTHON" scripts/deploy.py install --prefix "$PREFIX" --apply >/dev/null
+fi
 LINGER="$(loginctl show-user "$USER" --property=Linger --value 2>/dev/null || echo unknown)"
 cat <<JSON
 {"ready":true,"prefix":"$PREFIX","commit":"$COMMIT","connect_binary":"$BIN","linger":"$LINGER",
