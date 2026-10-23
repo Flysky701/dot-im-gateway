@@ -1,0 +1,81 @@
+name: release
+# Push a tag such as v0.1.1 (or run manually with an existing tag) to build the
+# single-file connectors on clean runners and attach them, with SHA256 files, to a
+# DRAFT release. Review the draft and publish it yourself; server-bootstrap.sh only
+# downloads published assets and verifies the .sha256 file before use.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build, for example v0.1.1
+        required: true
+permissions:
+  contents: read
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+jobs:
+  verify:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.21.0'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Tag must match package.json version
+        run: test "v$(node -p 'require("./package.json").version')" = "$TAG"
+      - run: npm ci --offline --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - run: python -m unittest discover -s test -p '*_test.py'
+  draft:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Single-file connectors for $TAG. Verify the .sha256 files. See docs/PORTABLE.md and THIRD_PARTY_NOTICES.md."
+  build:
+    needs: draft
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.21.0'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - run: npm ci --prefix packaging --ignore-scripts --no-audit --no-fund
+      - run: python packaging/fetch.py
+      - run: node packaging/build.js
+      # build.js already runs --self-test and writes <file>.sha256 and <file>.build.json.
+      - name: Verify checksums
+        shell: bash
+        run: |
+          cd dist
+          for f in *.sha256; do sha256sum -c "$f"; done
+          ls -l
+      - name: Upload to draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/dot-im-connect-* -R "$GITHUB_REPOSITORY" --clobber

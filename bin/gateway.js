@@ -13,7 +13,7 @@ function option(key,fallback){const i=args.indexOf('--'+key);if(i<0)return fallb
 const configPath=path.resolve(option('config','config.json'));
 const out=x=>console.log(JSON.stringify(x,null,2));
 try{
-  if(command==='help'||command==='--help')console.log(`dot-im-gateway 0.1.0 (Node 24.21+)
+  if(command==='help'||command==='--help')console.log(`dot-im-gateway 0.1.1 (Node 24.21+)
 config init [--config FILE]       Write offline configuration without secrets
 doctor [--config FILE]            Local configuration/runtime checks, no network
 serve [--config FILE]             Loopback service (live requires explicit config)
