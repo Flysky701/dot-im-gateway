@@ -62,6 +62,28 @@ class DeploymentTests(unittest.TestCase):
                     self.assertEqual(unit_path.read_text(encoding='utf-8'), original)
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux deployment only')
+    def test_uninstall_removes_only_the_marked_handoff_tunnel_unit(self):
+        for owned in [True, False]:
+            with self.subTest(owned=owned), tempfile.TemporaryDirectory(prefix='dot-deploy-', dir=ROOT / 'runtime') as tmp:
+                home = Path(tmp)
+                prefix = home / 'installation'
+                self.invoke('install', prefix, '--apply')
+                units = home / '.config/systemd/user'
+                units.mkdir(parents=True)
+                (units / 'dot-im-gateway.service').write_text(deploy.unit(prefix, '/usr/bin/node'), encoding='utf-8')
+                marker = f'# Managed by dot-im-gateway handoff for prefix={prefix if owned else home / "other"}\n'
+                (units / 'dot-im-tunnel.service').write_text(marker + '[Service]\n', encoding='utf-8')
+                with patch.object(deploy.Path, 'home', return_value=home), patch.object(deploy.sys, 'platform', 'linux'), \
+                        patch.object(deploy.shutil, 'which', return_value='/usr/bin/node'), \
+                        patch.object(deploy.sys, 'argv', ['deploy.py', 'uninstall', '--prefix', str(prefix), '--apply']), \
+                        patch.object(deploy, 'run') as run:
+                    deploy.main()
+                calls = [c.args for c in run.call_args_list]
+                self.assertEqual(('systemctl', '--user', 'disable', '--now', 'dot-im-tunnel.service') in calls, owned)
+                self.assertEqual((units / 'dot-im-tunnel.service').exists(), not owned)
+                self.assertFalse((units / 'dot-im-gateway.service').exists())
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux deployment only')
     def test_apply_lifecycle_preserves_data(self):
         with tempfile.TemporaryDirectory(prefix='dot-deploy-', dir=ROOT / 'runtime') as tmp:
             prefix = Path(tmp) / 'installation'

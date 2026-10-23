@@ -172,6 +172,13 @@ def main():
             run('systemctl', '--user', 'disable', 'dot-im-gateway.service')
             unit_path.unlink()
             run('systemctl', '--user', 'daemon-reload')
+        # The handoff-managed tunnel unit belongs to this prefix only when it carries our marker.
+        tunnel_unit = Path.home() / '.config/systemd/user/dot-im-tunnel.service'
+        if not args.no_systemd and tunnel_unit.is_file() and not tunnel_unit.is_symlink() and \
+                tunnel_unit.read_text(encoding='utf-8').startswith(f'# Managed by dot-im-gateway handoff for prefix={prefix}\n'):
+            run('systemctl', '--user', 'disable', '--now', 'dot-im-tunnel.service')
+            tunnel_unit.unlink()
+            run('systemctl', '--user', 'daemon-reload')
         if (prefix / 'current').is_symlink():
             (prefix / 'current').unlink()
         print('Service removed; data, config, secrets, releases and backups preserved.')

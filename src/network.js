@@ -10,9 +10,14 @@ export function publicIPv4(ip) {
     (a===169 && b===254) || (a===172 && b>=16 && b<=31) || (a===192 && (b===168 || b===0 || (b===88 && c===99))) ||
     (a===198 && (b===18 || b===19 || (b===51 && c===100))) || (a===203 && b===0 && c===113));
 }
+// Exact entries match exactly. An entry starting with "." matches subdomains only:
+// ".openai.com" allows "x.openai.com" but never "evil-openai.com" or "openai.com.evil".
+export function hostAllowed(hostname, hosts) {
+  return hosts.some(h => h.startsWith('.') ? h.length > 2 && hostname.length > h.length && hostname.endsWith(h) : hostname === h);
+}
 export function safeURL(raw, hosts, protocol='https:') {
   let u; try {u=new URL(raw);} catch {throw new Fault('invalid_destination');}
-  ensure(u.protocol===protocol && !u.username && !u.password && !u.hash && (!u.port || u.port==='443') && hosts.includes(u.hostname) && !net.isIP(u.hostname),'destination_denied');
+  ensure(u.protocol===protocol && !u.username && !u.password && !u.hash && (!u.port || u.port==='443') && hostAllowed(u.hostname,hosts) && !net.isIP(u.hostname),'destination_denied');
   return u;
 }
 export async function pinnedOptions(raw, hosts, resolver = dns.lookup, timeout = 10000) {

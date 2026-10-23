@@ -136,9 +136,10 @@ test('bound session also expires without a stop command and closes its listener'
   // an early session end fails explicitly instead of waiting forever for READY.
   const abort=new AbortController();t.after(()=>abort.abort());
   const token='b'.repeat(40),input={appId:'app',expectedOwner:'',secret:'s'.repeat(32),bearer:token,dataDir:path.join(f.dir,'bounded'),gatewayHosts:['api.bot.qq.com'],maximumSeconds:5};
-  const running=runQQTest(input,{commands,signal:abort.signal,Gateway:FakeGateway,wall:()=>now,send:()=>assert.fail('network forbidden'),emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);}});
+  let bound;  const running=runQQTest(input,{onBound:b=>{bound={...b};},commands,signal:abort.signal,Gateway:FakeGateway,wall:()=>now,send:()=>assert.fail('network forbidden'),emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);}});
   adapter.receive(packet(events.find(e=>e.stage==='binding_challenge').challenge));commands.emit('line','CONFIRM app qq-owner-stable');
   const url=await Promise.race([ready,running.then(()=>{throw new Error('session_ended_before_test_ready');})]);assert.equal((await call(url,token,'tools/list')).status,200);
+  assert.deepEqual(bound,{appId:'app',secret:'s'.repeat(32),ownerId:'qq-owner-stable'});
   await running;await assert.rejects(call(url,token,'tools/list'));assert.equal(input.secret,'');
 });
 test('real gateway loop reports synthetic auth status and stops on first failure without leaking body',async t=>{

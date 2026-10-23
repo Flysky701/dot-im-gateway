@@ -65,7 +65,7 @@ export function validateTestInput(input,{untilStopped=false}={}){
   str(input.dataDir,2048);ensure((untilStopped&&input.maximumSeconds===0)||(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800),'invalid_test_duration');return input;
 }
 
-export async function runQQTest(input,{emit,commands,signal,send=request,Gateway=QQGateway,clock=()=>performance.now(),wall=Date.now,untilStopped=false,verifiedOwner=''}={}){
+export async function runQQTest(input,{emit,commands,signal,send=request,Gateway=QQGateway,clock=()=>performance.now(),wall=Date.now,untilStopped=false,verifiedOwner='',onBound=null}={}){
   validateTestInput(input,{untilStopped});const end=input.maximumSeconds===0?Infinity:clock()+input.maximumSeconds*1000;
   ensure(!verifiedOwner||(identity(verifiedOwner)&&verifiedOwner===input.expectedOwner),'invalid_verified_owner');
   const binding=new OwnerChallenge(input.appId,{expectedOwner:input.expectedOwner,clock,wall});
@@ -115,6 +115,8 @@ export async function runQQTest(input,{emit,commands,signal,send=request,Gateway
   const bindTimer=setTimeout(()=>{if(!binding.owner){emit({stage:'failed',code:'binding_timeout'});stop();}},Math.min(120000,input.maximumSeconds?input.maximumSeconds*1000:120000));
   const activateOwner=owner=>{
       c.qq.ownerId=owner;
+      // Handoff only: the connector forwards bound credentials to the persistent service.
+      onBound?.({appId:input.appId,secret:input.secret,ownerId:owner});
       store=new Store(input.dataDir);for(const [k,v] of mem)store.set(k,v);mem.clear();
       core=new Core(store,c,null,{qq},wall);
       server=makeServer(new QQTestRPC(core,active),input.bearer);

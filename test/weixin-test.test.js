@@ -37,12 +37,13 @@ test('synthetic confirmed owner receives once, rejects others/media, reply uses 
   const ready=new Promise(r=>{readyResolve=r;}),abort=new AbortController();t.after(()=>abort.abort());
   const token='b'.repeat(40),credential={token:confirmed.bot_token,ownerId:confirmed.ilink_user_id,botId:confirmed.ilink_bot_id,origin:confirmed.baseurl};
   const input={bearer:token,dataDir:dir,maximumSeconds:5};
-  const running=runWeixinTest(input,{commands,signal:abort.signal,wall:()=>now,login:async()=>credential,emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);},send:async(url,o)=>{
+  let bound;const running=runWeixinTest(input,{commands,signal:abort.signal,wall:()=>now,login:async()=>credential,onBound:b=>{bound={...b};},emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);},send:async(url,o)=>{
     assert.equal(o.headers.Authorization,'Bearer '+confirmed.bot_token);const body=JSON.parse(o.body);
     if(url.endsWith('getupdates')){const msgs=polled?[]:[wxRaw(),wxRaw(),{...wxRaw('other'),from_user_id:'other'},{...wxRaw('media'),item_list:[{type:2,image_item:{}}]}];polled=true;return response({ret:0,msgs,get_updates_buf:'cursor'});}
     assert.ok(url.endsWith('sendmessage'));sent.push(body.msg);return response({ret:0});
   }});
   const url=await ready;let messages=[];
+  assert.deepEqual(bound,{token:confirmed.bot_token,botId:confirmed.ilink_bot_id,ownerId:confirmed.ilink_user_id,origin:confirmed.baseurl});
   for(let i=0;i<30&&!messages.length;i++){const r=await call(url,token,'list_pending');messages=r.result.structuredContent.messages;await new Promise(r=>setTimeout(r,20));}
   assert.equal(messages.length,1);
   for(const phase of ['ack','final'])await call(url,token,'reply',{message_id:messages[0].id,phase,text:phase});

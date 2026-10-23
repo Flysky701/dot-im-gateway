@@ -2,8 +2,21 @@ import {hash,canonical,ensure,Fault,exact,str} from './util.js';
 export class Core {
   constructor(store,config,media,adapters,clock=Date.now){
     Object.assign(this,{store,config,media,adapters,clock});this.busy=false;
-    const binding=hash(canonical([config.principal,config.qq.ownerId,config.qq.appId,config.weixin.ownerId,config.weixin.botId]));
-    ensure(!store.get('binding')||store.get('binding')===binding,'binding_changed_new_data_directory_required');store.set('binding',binding);
+    // Per-platform owner binding: adding a second platform keeps existing data, but
+    // swapping the owner or bot of an already bound platform requires a new data directory.
+    const legacy=store.get('binding');
+    if(legacy){
+      // v0.1 stored one combined hash. Accept it when each platform is either unchanged
+      // or was unbound at that time (a platform added later), then migrate.
+      const q=[config.qq.ownerId,config.qq.appId],w=[config.weixin.ownerId,config.weixin.botId],blank=['',''];
+      ensure([[q,w],[blank,w],[q,blank],[blank,blank]].some(([a,b])=>legacy===hash(canonical([config.principal,...a,...b]))),'binding_changed_new_data_directory_required');
+      store.run("DELETE FROM meta WHERE k='binding'");
+    }
+    for(const [p,bot] of [['qq','appId'],['weixin','botId']]){
+      if(!config[p].ownerId)continue;
+      const value=hash(canonical([config.principal,p,config[p].ownerId,config[p][bot]])),old=store.get('binding.'+p);
+      ensure(!old||old===value,'binding_changed_new_data_directory_required');store.set('binding.'+p,value);
+    }
   }
   authorize(m){ensure(this.config[m.platform].enabled && m.owner===this.config[m.platform].ownerId&&m.conversation===m.owner,'binding_revoked');}
   reply(args){

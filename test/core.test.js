@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,accept,now,qqRaw} from './helpers.js';
 import {Store} from '../src/store.js';
 import {Core} from '../src/core.js';
-import {Fault,parseJson} from '../src/util.js';
+import {Fault,parseJson,hash,canonical} from '../src/util.js';
 test('inbox and cursor commit atomically; duplicate packet survives restart once',async t=>{
   const f=fixture(t),raw=qqRaw();f.store.checkpoint('qq',[{key:'q1',raw}],'qq.seq','1');f.store.checkpoint('qq',[{key:'q1',raw}],'qq.seq','1');
   assert.equal(f.store.one('SELECT count(*) n FROM inbox').n,1);await f.core.tick();
@@ -14,6 +14,23 @@ test('transaction rollback cannot advance checkpoint',t=>{
 });
 test('stable owner binding rejects identity swap in existing state',t=>{
   const f=fixture(t);f.c.qq.ownerId='another';assert.throws(()=>new Core(f.store,f.c,f.media,f.adapters),/binding_changed/);
+});
+test('adding a platform keeps data; swapping a bound bot or owner does not',t=>{
+  const f=fixture(t),c=structuredClone(f.c);
+  f.store.run("DELETE FROM meta WHERE k LIKE 'binding%'");c.weixin.ownerId='';c.weixin.botId='';new Core(f.store,c,f.media,f.adapters);
+  assert.ok(f.store.get('binding.qq'));assert.equal(f.store.get('binding.weixin'),undefined);
+  c.weixin.ownerId='wx-owner-stable';c.weixin.botId='wx-bot';new Core(f.store,c,f.media,f.adapters);assert.ok(f.store.get('binding.weixin'));
+  assert.throws(()=>new Core(f.store,{...c,weixin:{...c.weixin,botId:'other-bot'}},f.media,f.adapters),/binding_changed/);
+  assert.throws(()=>new Core(f.store,{...c,qq:{...c.qq,appId:'other-app'}},f.media,f.adapters),/binding_changed/);
+});
+test('v0.1 combined binding migrates, including a platform added later',t=>{
+  const f=fixture(t),c=f.c;
+  const legacy=(q,w)=>hash(canonical([c.principal,...q,...w]));
+  for(const [q,w,ok] of [[['qq-owner-stable','qq-app'],['wx-owner-stable','wx-bot'],true],[['qq-owner-stable','qq-app'],['',''],true],[['other','qq-app'],['',''],false]]){
+    f.store.run("DELETE FROM meta WHERE k LIKE 'binding%'");f.store.set('binding',legacy(q,w));
+    if(ok){new Core(f.store,c,f.media,f.adapters);assert.equal(f.store.get('binding'),undefined);assert.ok(f.store.get('binding.qq')&&f.store.get('binding.weixin'));}
+    else assert.throws(()=>new Core(f.store,c,f.media,f.adapters),/binding_changed/);
+  }
 });
 test('ack/final are immutable and idempotent with original route',async t=>{
   const f=fixture(t),m=await accept(f);assert.throws(()=>f.core.reply({message_id:m.id,phase:'final',text:'done'}),/ack_required/);

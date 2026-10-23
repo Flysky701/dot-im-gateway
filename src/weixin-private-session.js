@@ -83,7 +83,7 @@ export class WeixinTestRPC{
   }
 }
 
-export async function runWeixinTest(input,{emit,commands,signal,send=request,clock=()=>performance.now(),wall=Date.now,login=loginWeixin,untilStopped=false}={}){
+export async function runWeixinTest(input,{emit,commands,signal,send=request,clock=()=>performance.now(),wall=Date.now,login=loginWeixin,untilStopped=false,onBound=null}={}){
   exact(input,['bearer','dataDir','maximumSeconds']);str(input.dataDir,2048);str(input.bearer,1024);ensure(input.bearer.length>=32&&!/[\r\n]/.test(input.bearer),'invalid_secret_shape');
   ensure((untilStopped&&input.maximumSeconds===0)||(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800),'invalid_test_duration');
   const abort=new AbortController(),end=input.maximumSeconds===0?Infinity:clock()+input.maximumSeconds*1000;let credentials,store,server,core,polling,working,interval,verifyResolve,verifyReject,stopped=false,resolveStop;
@@ -99,6 +99,8 @@ export async function runWeixinTest(input,{emit,commands,signal,send=request,clo
     if(signal?.aborted){stop();return;}
     credentials=await login({send,emit,verification,signal:abort.signal,clock});
     ensure(active(),'test_session_expired');
+    // Handoff only: the connector forwards bound credentials to the persistent service.
+    onBound?.({token:credentials.token,botId:credentials.botId,ownerId:credentials.ownerId,origin:credentials.origin});
     const c=structuredClone(example);c.mode='live';c.dataDir=input.dataDir;c.weixin.enabled=true;c.weixin.ownerId=credentials.ownerId;c.weixin.botId=credentials.botId;c.weixin.apiHost=new URL(credentials.origin).hostname;
     store=new Store(input.dataDir);
     const wx=new Weixin(c.weixin,store,null,send,wall);

@@ -11,6 +11,7 @@ import {Connector} from '../src/connector.js';
 import {qqWorkerStart,verifyQQWorker} from '../src/qq-qr-worker.js';
 import {connectServer} from '../src/connect-http.js';
 import {lock} from '../src/runtime.js';
+import {createHandoff,safePrefix} from '../src/handoff.js';
 import {ensure,Fault} from '../src/util.js';
 
 const text=name=>getAsset(name,'utf8');
@@ -29,9 +30,10 @@ async function childStop(child){
 }
 async function main(){
   if(args.includes('--licenses')){console.log(text('licenses'));return;}
-  if(args.includes('--help')){console.log('dot-im-connect [--port 8789] [--no-browser]\nSingle connection: owner text only; no saved credentials, subscriptions or autostart.\nWindows runs locally; on Linux use an existing SSH local port forward.\nClosing the page keeps the bridge running; Ctrl+C stops it and cleans temporary data.\n--self-test performs offline embedded-runtime checks. --licenses prints bundled notices.');return;}
+  if(args.includes('--help')){console.log('dot-im-connect [--port 8789] [--no-browser] [--handoff PREFIX]\nSingle connection: owner text only; this program saves no credentials and installs nothing by itself.\nWindows runs locally; on Linux use an existing SSH local port forward.\nClosing the page keeps the bridge running; Ctrl+C stops it and cleans temporary data.\n--handoff PREFIX (Linux): bind once, then hand the result to the persistent service installed by\n  scripts/deploy.py at PREFIX (credentials go to PREFIX/*.env, 0600). Rerun it to re-authorize.\n--self-test performs offline embedded-runtime checks. --licenses prints bundled notices.');return;}
   const preview=args.includes('--preview'),selfTest=args.includes('--self-test');let port=0;
   const pi=args.indexOf('--port');if(pi>=0){port=Number(args[pi+1]);ensure(Number.isInteger(port)&&port>=1024&&port<=65535,'invalid_port');args.splice(pi,2);}
+  let handoffPrefix='';const hi=args.indexOf('--handoff');if(hi>=0){ensure(process.platform==='linux','handoff_requires_linux');handoffPrefix=safePrefix(args[hi+1]);args.splice(hi,2);}
   ensure(args.every(x=>['--preview','--self-test','--no-browser'].includes(x)),'unknown_option');
   ensure(manifest.platform===process.platform&&manifest.arch===process.arch,'wrong_platform_binary');
   const release=await lock(path.join(os.tmpdir(),'dot-im-connect-single-instance'));
@@ -45,6 +47,8 @@ async function main(){
     fs.rmSync(dir,{recursive:true});await release();safePrint({stage:'stopped',processes_remaining:false,data_removed:true});
   };
   process.once('SIGINT',()=>{void cleanup();});process.once('SIGTERM',()=>{void cleanup();});
+  // A dropped SSH session must still restore a paused persistent service (handoff).
+  process.once('SIGHUP',()=>{void cleanup();});
   try{
     const binary=gunzipSync(getAsset('tunnel.gz'));ensure(createHash('sha256').update(binary).digest('hex')===manifest.tunnelSha256,'embedded_binary_changed');
     const clientPath=path.join(dir,process.platform==='win32'?'tunnel-client.exe':'tunnel-client');fs.writeFileSync(clientPath,binary,{mode:0o700,flag:'wx'});
@@ -73,8 +77,11 @@ async function main(){
         ensure(ready&&!signal.aborted,'tunnel_not_ready');return {stop};
       }catch(e){await stop();throw e;}
     };
-    connector=preview?{snapshot:()=>({stage:'idle'}),start:()=>{throw new Fault('preview_network_disabled');},command:()=>{throw new Fault('preview_network_disabled');},stop:async()=>{}}:new Connector({dataDir:path.join(dir,'data'),startTunnel,onEnd:s=>{
-      safePrint({stage:s.stage,...(s.code?{code:s.code}:{})});endTimer=setTimeout(()=>{void cleanup();},s.stage==='failed'?15000:500);
+    const handoff=handoffPrefix?createHandoff({prefix:handoffPrefix,tunnelBinary:binary}):null;
+    connector=preview?{snapshot:()=>({stage:'idle'}),start:()=>{throw new Fault('preview_network_disabled');},command:()=>{throw new Fault('preview_network_disabled');},stop:async()=>{}}:new Connector({dataDir:path.join(dir,'data'),startTunnel,handoff,onEnd:s=>{
+      safePrint({stage:s.stage,...(s.code?{code:s.code}:{}),...(s.stage==='handed_off'?{service:s.service,events:s.events,autostart:s.autostart,linger:s.linger}:{})});
+      // Keep the page reachable briefly so it can show the final result.
+      endTimer=setTimeout(()=>{void cleanup();},['failed','handed_off'].includes(s.stage)?20000:500);
     },startQrConnect:qqWorkerStart(text('qq-sdk'))});
     const token=preview?'synthetic-preview-access-0000000000000000':randomBytes(32).toString('hex');
     server=connectServer({token,connector,assets:{'/':{body:text('html'),type:'text/html; charset=utf-8'},'/app.js':{body:text('js'),type:'text/javascript; charset=utf-8'},'/style.css':{body:text('css'),type:'text/css; charset=utf-8'}},finish:()=>{server.closeAllConnections();server.close();safePrint({stage:'page_closed',bridge_running:true});}});
