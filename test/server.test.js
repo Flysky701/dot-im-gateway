@@ -16,7 +16,7 @@ function call(port,method,params={},headers={}){
 }
 test('real loopback HTTP discovers MCP 2.0, lists tools and rejects auth/origin/header mismatch',async t=>{
   const f=await setup(t),d=await call(f.port,'server/discover');assert.equal(d.status,200);assert.deepEqual(d.body.result.supportedVersions,[VERSION]);assert.equal(d.body.result.resultType,'complete');
-  assert.equal((await call(f.port,'tools/list')).body.result.tools.length,6);
+  assert.equal((await call(f.port,'tools/list')).body.result.tools.length,9);
   assert.equal((await call(f.port,'tools/list',{}, {Authorization:'Bearer wrong'})).status,401);
   assert.equal((await call(f.port,'tools/list',{}, {Origin:'https://evil.test'})).status,403);
   assert.equal((await call(f.port,'tools/list',{}, {'Mcp-Method':'tools/call'})).status,400);

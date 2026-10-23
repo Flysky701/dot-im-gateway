@@ -25,14 +25,29 @@ export class QQ {
   }
   receive(p){
     // Checkpoint only after durable packet insertion. Replay duplicates are harmless.
-    if(p.op===0&&p.t==='C2C_MESSAGE_CREATE'&&p.d?.author?.user_openid===this.c.ownerId){str(p.d.id);this.store.checkpoint('qq',[{key:p.d.id,raw:p}],'qq.seq',p.s);}
+    if(p.op===0&&p.t==='C2C_MESSAGE_CREATE'&&p.d?.author?.user_openid===this.c.ownerId){str(p.d.id);this.store.checkpoint('qq',[{key:p.d.id,raw:p}],'qq.seq',p.s,this.clock());}
     else if(Number.isSafeInteger(p.s))this.store.set('qq.seq',p.s);
   }
   async sendReply(m,r){
     ensure(m.owner===this.c.ownerId&&m.conversation===this.c.ownerId,'owner_mismatch');const p=JSON.parse(r.payload);ensure(!p.media_id,'qq_media_unsupported');str(p.text,4000);
+    const owner=m.owner,appId=this.c.appId;
     let token;try{token=await this.accessToken();}catch{throw new Fault('qq_token_unavailable','retry');}
     ensure(m.expires>this.clock(),'reply_window_expired');
-    const res=await this.send(`https://${this.apiHost}/v2/users/${encodeURIComponent(m.owner)}/messages`,{hosts:[this.apiHost],headers:{Authorization:`QQBot ${token}`,'X-Bot-Appid':this.c.appId,'Content-Type':'application/json'},body:Buffer.from(canonical({msg_type:0,content:p.text,msg_id:m.source_id,msg_seq:r.phase==='ack'?1:2}))});
+    return this.sendText({msg_type:0,content:p.text,msg_id:m.source_id,msg_seq:r.phase==='ack'?1:2},token,owner,appId);
+  }
+  async sendNotification(r){
+    ensure(this.c.enabled&&this.c.ownerId&&this.c.appId,'binding_required');
+    const p=JSON.parse(r.payload);str(p.text,4000);
+    const owner=this.c.ownerId,appId=this.c.appId;
+    let token;try{token=await this.accessToken();}catch{throw new Fault('qq_token_unavailable','retry');}
+    // No inbound ID, sequence, group or caller-controlled recipient. QQ's active
+    // C2C path is still subject to the account's platform permission and quota.
+    ensure(r.expires>this.clock(),'notification_expired');
+    return this.sendText({msg_type:0,content:p.text},token,owner,appId);
+  }
+  async sendText(body,token,owner,appId){
+    ensure(this.c.enabled&&owner===this.c.ownerId&&appId===this.c.appId,'binding_revoked');
+    const res=await this.send(`https://${this.apiHost}/v2/users/${encodeURIComponent(owner)}/messages`,{hosts:[this.apiHost],headers:{Authorization:`QQBot ${token}`,'X-Bot-Appid':appId,'Content-Type':'application/json'},body:Buffer.from(canonical(body))});
     if(res.status===401){this.token=null;throw new Fault('qq_token_expired','retry');}
     if(res.status===429)throw new Fault('qq_rate_limit','retry');
     if(res.status>=500)throw new Fault('qq_server_error','uncertain');

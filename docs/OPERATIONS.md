@@ -30,6 +30,8 @@
 
 ## 故障处理
 
+主动通知和分段延迟使用 `notify_owner`、`notification_status`、`message_timing`，详见[调用与验收说明](NOTIFICATIONS.md)。通知不依赖来信 ID；QQ 主动权限和微信无上下文接受能力由用户验收。对 `notice_...` 也可用同一 `reconcile --id ... --decision accepted|cancelled` 命令，但它只记录人工决定，不伪造平台接受时间，也不重发。恢复备份时通知的 pending/sending 同样隔离为 uncertain；不会自动补发。
+
 `pending` 长时间不动：检查服务、模式、原 dot 是否已订阅/收到事件、是否调用 reply、ack 是否阻塞 final、原消息期限和平台授权。`events=accepted` 只表示 ChatGPT callback 接受，不能证明 dot 已处理。`replies=accepted` 只表示平台接口接受，需真人确认聊天可见。
 
 `uncertain`：任何传输中断、未知 5xx、成功响应格式无法判定，或发送中崩溃都可能触发。**不自动重试**。让用户核对原聊天记录，再 accepted/cancelled；没有查询证据就保留 uncertain。首版不提供任意重新发送命令。需要新的回复尝试时，由用户发送新消息形成新上下文。

@@ -129,12 +129,17 @@ node bin/gateway.js status --config config.json
 | `list_pending` | 每页 50 条可处理或待核实消息，返回 `messages` 与 `next_cursor`；传入 cursor 继续，排除过期、终止和停用平台记录 |
 | `read_message` | 读取消息及 ack/final 状态 |
 | `reply` | 固定消息 ID + `ack` 或 `final`；不能指定收件人或平台 |
+| `notify_owner` | 向已绑定本人主动发送文字；QQ 无入站 msg_id，微信明确选择实验性 none/latest 上下文模式 |
+| `notification_status` | 按通知 ID 查询 queued/accepted/rejected/uncertain、尝试次数及时间，不返回正文或身份 |
+| `message_timing` | 查询接收、事件、dot 读取和 ack/final 阶段时间；不把处理总耗时称为纯思考时间 |
 | `put_media` | 为某条微信消息保存 PNG/JPEG/PDF base64 |
 | `read_media` | 返回消息所属图片或嵌入 PDF 资源 |
 
 事件仅携带 `message_id` 和 `platform`，不包含指挥 dot 行为的文字。原 dot 需要用户明确订阅并设定：收到后读消息、尽快 `reply(ack)`，执行任务后 `reply(final)`，用 `read_message` 检查实际发送状态。网关不替 dot 决定或执行任务。
 
 回复唯一键是 `(message_id, phase)`；相同内容重复调用安全，内容不同报冲突。`final` 要等 `ack` 被平台接受才发送。`pending` 表示排队，`accepted` 表示接口接受，`uncertain` 表示可能已发送，不能盲目重发。人工核实后使用 CLI reconcile。详见 [架构](docs/ARCHITECTURE.md)、[安全边界](docs/SECURITY.md)。
+
+主动通知是常驻服务的新入口，不依赖上述回复唯一键，也不创建提醒计划。由 Agent 的既有定时能力在指定时间调用，每次逻辑通知固定一个 `idempotency_key`。QQ 平台主动权限/额度和微信无上下文接受能力仍需用户实测，代码不能解除平台限制；`accepted` 也不等于手机送达。参数、可复制提示词、限速及延迟解释见[主动通知与延迟观测](docs/NOTIFICATIONS.md)。Windows 一次性和私聊测试入口仍仅开放原有四个文字工具。
 
 ack 被明确拒绝或取消时，其排队 final 会取消；ack 为 uncertain 时 final 等待人工核实，但不阻塞其他消息，超过回复窗口即终止。入站瞬时故障采用持久化指数退避（1 秒至 5 分钟），停用平台不占处理名额。附件按同一消息的类型和完整字节复用，不因多附件部分下载失败反复占用配额。
 

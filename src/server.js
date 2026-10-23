@@ -15,9 +15,12 @@ export const tools=[
   {name:'list_pending',description:'Page through actionable or uncertain owner messages, 50 per page. Follow next_cursor until null. Expired and terminal replies are excluded; read_message retains their status.',inputSchema:schema({cursor:s},[])},
   {name:'read_message',description:'Read one received message and ack/final statuses by opaque message ID.',inputSchema:schema({message_id:s})},
   {name:'reply',description:'Queue an immutable ack or final to the original channel only. Send ack first. Repeated identical calls are idempotent; uncertainty requires operator reconciliation.',inputSchema:schema({message_id:s,phase:{enum:['ack','final']},text:{type:'string',maxLength:16000},media_id:s},['message_id','phase'])},
+  {name:'notify_owner',description:'Queue a text notification only to the bound owner; no inbound message ID or ack/final required. Reuse one idempotency_key per intended notification. QQ omits msg_id. Weixin requires explicit experimental context_mode: none omits context_token; latest uses valid saved context. Platform permission and delivery need user verification. Never resend uncertain with a new key.',inputSchema:schema({platform:{enum:['qq','weixin']},idempotency_key:{type:'string',pattern:'^[A-Za-z0-9._:-]{1,128}$'},text:{type:'string',maxLength:16000},context_mode:{enum:['none','latest']}},['platform','idempotency_key','text'])},
+  {name:'notification_status',description:'Read redacted notification state and timings. accepted means platform acceptance, not phone delivery. No automatic resend of uncertain.',inputSchema:schema({notification_id:s})},
+  {name:'message_timing',description:'Read observed gateway/event/dot-read/reply timestamps and retry counts without message content. Server timings are distinct from platform source time. Read-to-final includes queueing, inference and tools, not pure thinking. Phone delivery is unknown.',inputSchema:schema({message_id:s})},
   {name:'put_media',description:'Store PNG, JPEG or PDF bytes for this Weixin message; max 4 MiB. Never accepts server paths or URLs.',inputSchema:schema({message_id:s,mime:{enum:['image/png','image/jpeg','application/pdf']},data_base64:s})},
   {name:'read_media',description:'Read bounded media bytes belonging to a received message. Images are returned as images; PDF as embedded resource.',inputSchema:schema({message_id:s,media_id:s})}
-].map(t=>({...t,annotations:{readOnlyHint:!['reply','put_media'].includes(t.name),destructiveHint:false,idempotentHint:true,openWorldHint:t.name==='reply'}}));
+].map(t=>({...t,annotations:{readOnlyHint:!['reply','put_media','notify_owner'].includes(t.name),destructiveHint:false,idempotentHint:true,openWorldHint:['reply','notify_owner'].includes(t.name)}}));
 export const eventDefinition={name:'message.created',description:'A new private message from the explicitly bound owner. Read content with read_message.',delivery:['webhook'],inputSchema:schema({platform:{enum:['qq','weixin']}}),payloadSchema:schema({message_id:s,platform:{enum:['qq','weixin']}})};
 export class RPC {
   constructor(core,events){this.core=core;this.events=events;}
@@ -38,10 +41,13 @@ export class RPC {
       for(const key of t.inputSchema.required)str(a[key],key==='data_base64'?6000000:16000);
       try{
         let data;
-        if(p.name==='gateway_status')data=store.status();
-        if(p.name==='list_pending')data=store.pendingPage(a.cursor,this.core.clock(),['qq','weixin'].filter(p=>this.core.config[p].enabled));
-        if(p.name==='read_message'){this.core.authorize(store.message(a.message_id));data=store.publicMessage(a.message_id);}
+        if(p.name==='gateway_status')data={...store.status(),notification_capabilities:this.core.notificationCapabilities()};
+        if(p.name==='list_pending'){data=store.pendingPage(a.cursor,this.core.clock(),['qq','weixin'].filter(p=>this.core.config[p].enabled));for(const m of data.messages)store.markRead(m.id,this.core.clock());}
+        if(p.name==='read_message'){this.core.authorize(store.message(a.message_id));data=store.publicMessage(a.message_id);store.markRead(a.message_id,this.core.clock());}
         if(p.name==='reply')data=this.core.reply(a);
+        if(p.name==='notify_owner')data=this.core.notify(a);
+        if(p.name==='notification_status')data=this.core.notificationStatus(a.notification_id);
+        if(p.name==='message_timing')data=this.core.messageTiming(a.message_id);
         if(p.name==='put_media'){
           const m=store.message(a.message_id);this.core.authorize(m);ensure(m.platform==='weixin','qq_media_unsupported');
           const bytes=Buffer.from(a.data_base64,'base64');ensure(bytes.toString('base64')===a.data_base64,'invalid_base64');

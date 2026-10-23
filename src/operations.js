@@ -31,10 +31,11 @@ export async function restoreData(source,dest){
     ensure(store.one('PRAGMA integrity_check').integrity_check==='ok','database_integrity_failed');
     store.tx(()=>{
       store.run("UPDATE replies SET state='uncertain',error='restore_requires_reconciliation' WHERE state IN ('pending','sending')");
+      store.run("UPDATE notifications SET state='uncertain',error='restore_requires_reconciliation' WHERE state IN ('pending','sending')");
       store.run("UPDATE subscriptions SET active=0,secret='revoked',old_secret=NULL");
       store.run("UPDATE events SET state='cancelled' WHERE state IN ('pending','sending','expired')");
       store.run("DELETE FROM meta WHERE k IN ('qq.session','qq.seq')");store.audit('restored_quarantined');
     });
   }finally{store.close();}
-  return {restored:dest,subscriptions:'revoked',pendingReplies:'uncertain'};
+  return {restored:dest,subscriptions:'revoked',pendingReplies:'uncertain',pendingNotifications:'uncertain'};
 }
