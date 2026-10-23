@@ -50,27 +50,22 @@
     </details>
 
     <details open id="tunnel-fields">
-      <summary id="tunnel-summary">OpenAI Tunnel</summary>
+      <summary id="tunnel-summary">OpenAI Tunnel（首次需两步）</summary>
       <label>
         <span class="label-row">
-          <span>Tunnel ID</span>
-          <a href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noopener noreferrer">查看 Tunnel ↗</a>
+          <strong>① Tunnel ID（通道编号）</strong>
+          <a href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noopener noreferrer">1. 去新建通道 ↗</a>
         </span>
+        <span class="field-tip">新建通道并关联你的 ChatGPT 工作区，复制 <code>tunnel_...</code>（建通道不会生成 Key）</span>
         <input name="tunnelId" autocomplete="off" placeholder="tunnel_..." required maxlength="128">
       </label>
       <label>
         <span class="label-row">
-          <span>组织 ID</span>
-          <a href="https://platform.openai.com/settings/organization/general" target="_blank" rel="noopener noreferrer">查看组织 ↗</a>
+          <strong>② 受限运行密钥（API Key）</strong>
+          <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" rel="noopener noreferrer">2. 去创建受限 Key ↗</a>
         </span>
-        <input name="organizationId" autocomplete="off" placeholder="org-..." required maxlength="128">
-      </label>
-      <label>
-        <span class="label-row">
-          <span>运行密钥（Tunnels Read+Use）</span>
-          <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" rel="noopener noreferrer">创建密钥 ↗</a>
-        </span>
-        <input name="runtimeKey" type="password" autocomplete="off" placeholder="仅粘贴于此，不发聊天" required maxlength="1024">
+        <span class="field-tip">点 Create new secret key → 切到 <b>Restricted</b> → 仅将 <b>Tunnels</b> 设为 <b>Read + Use</b></span>
+        <input name="runtimeKey" type="password" autocomplete="off" placeholder="粘贴 sk-... 密钥，仅留本机" required maxlength="1024">
       </label>
     </details>
 

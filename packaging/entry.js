@@ -62,8 +62,9 @@ async function main(){
     const startTunnel=async({url,bearer,key,tunnelId,organizationId,signal,onExit})=>{
       ensure(!preview,'preview_network_disabled');ensure(/^http:\/\/127\.0\.0\.1:[0-9]+\/mcp$/.test(url),'invalid_gateway_address');
       const healthPort=await unusedPort();ensure(!signal.aborted,'connection_stopped');
-      const env={...cleanEnvironment(dir),CONTROL_PLANE_API_KEY:key,CONTROL_PLANE_TUNNEL_ID:tunnelId,CONTROL_PLANE_ORGANIZATION_ID:organizationId,DOT_MCP_AUTH:'Bearer '+bearer};
-      const child=spawn(clientPath,['run','--control-plane.api-key','env:CONTROL_PLANE_API_KEY','--control-plane.poll-channel','main','--control-plane.max-inflight','2','--mcp.max-concurrent-requests','1','--mcp.server-url',url,'--mcp.extra-headers','Authorization: env:DOT_MCP_AUTH','--mcp.discovery-extra-headers','Authorization: env:DOT_MCP_AUTH','--health.listen-addr','127.0.0.1:'+healthPort,'--log.format','json','--log.level','warn','--admin-ui.log-buffer-events','1'],{cwd:dir,env,stdio:'ignore',windowsHide:true});children.add(child);
+      const env={...cleanEnvironment(dir),CONTROL_PLANE_API_KEY:key,CONTROL_PLANE_TUNNEL_ID:tunnelId,DOT_MCP_AUTH:'Bearer '+bearer};
+      if(organizationId)env.CONTROL_PLANE_ORGANIZATION_ID=organizationId;
+      const child=spawn(clientPath,['run','--control-plane.api-key','env:CONTROL_PLANE_API_KEY','--control-plane.poll-channel','main','--control-plane.max-inflight','2','--mcp.max-concurrent-requests','1','--mcp.server-url',url,'--mcp.startup-wait-timeout','30s','--mcp.extra-headers','Authorization: env:DOT_MCP_AUTH','--mcp.discovery-extra-headers','Authorization: env:DOT_MCP_AUTH','--health.listen-addr','127.0.0.1:'+healthPort,'--log.format','json','--log.level','warn','--admin-ui.log-buffer-events','1'],{cwd:dir,env,stdio:'ignore',windowsHide:true});children.add(child);
       let stopping=false;const stop=async()=>{stopping=true;await childStop(child);};
       child.once('exit',()=>{children.delete(child);if(!stopping&&!signal.aborted)onExit();});
       try{

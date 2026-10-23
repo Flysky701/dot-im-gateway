@@ -59,7 +59,7 @@ const instructions = {
 const errorMessages = {
   unauthorized: '一次性页面令牌已失效（刷新会清除），请从终端重新打开完整链接',
   connection_already_started: '连接已在进行中',
-  invalid_identifier: 'Tunnel ID 或组织 ID 格式有误，需以 tunnel_ / org- 开头',
+  invalid_identifier: 'Tunnel ID 或 AppID 格式有误（Tunnel ID 需以 tunnel_ 开头）',
   invalid_secret_shape: '密钥或 Secret 格式不符合要求（长度 16~1024 字符）',
   scope_confirmation_required: '请勾选同意仅连接本人私聊',
   platform_required: '请选择连接平台',
@@ -172,7 +172,7 @@ document.querySelectorAll('[name=platform], [name=qqAuth]').forEach(x => {
   x.addEventListener('change', platformFields);
 });
 
-const tunnelInputs = ['tunnelId', 'organizationId', 'runtimeKey'].map(n => $('#setup').elements[n]);
+const tunnelInputs = ['tunnelId', 'runtimeKey'].map(n => $('#setup').elements[n]);
 for (const input of tunnelInputs) {
   input.addEventListener('input', () => {
     if (!tunnelSaved) return;
@@ -218,7 +218,6 @@ $('#setup').addEventListener('submit', async e => {
   const appId = platform === 'qq' ? (f.elements.appId.value || '').trim() : '';
   const secret = (platform === 'qq' && qqAuth === 'manual') ? f.elements.secret.value : '';
   const tunnelId = (f.elements.tunnelId.value || '').trim();
-  const organizationId = (f.elements.organizationId.value || '').trim();
   const runtimeKey = (f.elements.runtimeKey.value || '').trim();
   const confirmed = Boolean(f.elements.confirmed.checked);
 
@@ -228,7 +227,7 @@ $('#setup').addEventListener('submit', async e => {
     appId,
     secret,
     tunnelId,
-    organizationId,
+    organizationId: '',
     runtimeKey,
     confirmed
   };

@@ -16,8 +16,9 @@ export function connectionInput(input,{tunnelSaved=false}={}){
   ensure(['qq','weixin'].includes(input.platform),'platform_required');ensure(input.confirmed===true,'scope_confirmation_required');
   const reuse=reusesTunnel(input,tunnelSaved);
   if(!reuse){
-    for(const name of ['tunnelId','organizationId'])ensure(identifier(input[name]),'invalid_identifier');
-    ensure(input.tunnelId.startsWith('tunnel_')&&input.organizationId.startsWith('org-'),'invalid_identifier');
+    ensure(identifier(input.tunnelId)&&input.tunnelId.startsWith('tunnel_'),'invalid_identifier');
+    ensure(input.organizationId===undefined||typeof input.organizationId==='string','invalid_identifier');
+    if(input.organizationId)ensure(identifier(input.organizationId)&&input.organizationId.startsWith('org-'),'invalid_identifier');
   }
   const manual=input.platform==='qq'&&(input.qqAuth||'manual')==='manual';
   if(input.platform==='qq')ensure(['qr','manual'].includes(input.qqAuth||'manual'),'invalid_qq_auth');

@@ -8,8 +8,11 @@ import {validateTestInput} from '../src/qq-private-session.js';
 
 const input=()=>({platform:'qq',appId:'test-app',secret:'synthetic-qq-secret-only',tunnelId:'tunnel_synthetic',organizationId:'org-synthetic',runtimeKey:'synthetic-tunnel-key-only',confirmed:true});
 test('one-shot connection rejects missing consent, arbitrary targets and credential arguments',()=>{
-  for(const change of [{confirmed:false},{platform:'other'},{secret:'short'},{recipient:'other'},{runtimeKey:'unsafe\ncredential0000000'}])assert.throws(()=>connectionInput({...input(),...change}));
+  for(const change of [{confirmed:false},{platform:'other'},{secret:'short'},{recipient:'other'},{runtimeKey:'unsafe\ncredential0000000'},{organizationId:'bad_org'},{organizationId:123}])assert.throws(()=>connectionInput({...input(),...change}));
   assert.equal(connectionInput(input()).platform,'qq');
+  assert.equal(connectionInput({...input(),organizationId:''}).organizationId,'');
+  const withoutOrg={...input()};delete withoutOrg.organizationId;
+  assert.equal(connectionInput(withoutOrg).organizationId,undefined);
 });
 test('binding confirmation is independent, secrets do not enter state, one connection only',async()=>{
   let emitted,tunnelStarts=0,tunnelStops=0,ended=0;

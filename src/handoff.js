@@ -50,7 +50,7 @@ Wants=network-online.target ${GATEWAY_UNIT}
 [Service]
 Type=simple
 WorkingDirectory=${prefix}
-ExecStart=${prefix}/bin/tunnel-client run --control-plane.api-key env:CONTROL_PLANE_API_KEY --control-plane.poll-channel main --control-plane.max-inflight 2 --mcp.max-concurrent-requests 1 --mcp.server-url http://127.0.0.1:${port}/mcp --mcp.extra-headers "Authorization: env:DOT_MCP_AUTH" --mcp.discovery-extra-headers "Authorization: env:DOT_MCP_AUTH" --health.listen-addr 127.0.0.1:${healthPort} --log.format json --log.level warn --admin-ui.log-buffer-events 1
+ExecStart=${prefix}/bin/tunnel-client run --control-plane.api-key env:CONTROL_PLANE_API_KEY --control-plane.poll-channel main --control-plane.max-inflight 2 --mcp.max-concurrent-requests 1 --mcp.server-url http://127.0.0.1:${port}/mcp --mcp.startup-wait-timeout 30s --mcp.extra-headers "Authorization: env:DOT_MCP_AUTH" --mcp.discovery-extra-headers "Authorization: env:DOT_MCP_AUTH" --health.listen-addr 127.0.0.1:${healthPort} --log.format json --log.level warn --admin-ui.log-buffer-events 1
 EnvironmentFile=${prefix}/tunnel-runtime.env
 Restart=always
 RestartSec=5
@@ -80,11 +80,13 @@ export function planHandoff(data,{config,runtimeEnv=new Map(),tunnelEnv=new Map(
   const runtime=new Map(runtimeEnv),tunnel=new Map(tunnelEnv);
   const existing=runtime.get(c.tokenEnv),token=typeof existing==='string'&&existing.length>=32?existing:random();
   runtime.set(c.tokenEnv,token);runtime.set(p==='qq'?c.qq.secretEnv:c.weixin.tokenEnv,p==='qq'?b.secret:b.token);
-  if(data.tunnelId){
-    ensure(id(data.tunnelId)&&id(data.organizationId)&&typeof data.runtimeKey==='string'&&data.runtimeKey.length>=16,'invalid_tunnel_settings');
-    tunnel.set('CONTROL_PLANE_API_KEY',data.runtimeKey);tunnel.set('CONTROL_PLANE_TUNNEL_ID',data.tunnelId);tunnel.set('CONTROL_PLANE_ORGANIZATION_ID',data.organizationId);
+  if(data.tunnelId||data.runtimeKey||data.organizationId){
+    ensure(id(data.tunnelId)&&data.tunnelId.startsWith('tunnel_')&&(!data.organizationId||(id(data.organizationId)&&data.organizationId.startsWith('org-')))&&typeof data.runtimeKey==='string'&&data.runtimeKey.length>=16,'invalid_tunnel_settings');
+    tunnel.set('CONTROL_PLANE_API_KEY',data.runtimeKey);tunnel.set('CONTROL_PLANE_TUNNEL_ID',data.tunnelId);
+    if(data.organizationId)tunnel.set('CONTROL_PLANE_ORGANIZATION_ID',data.organizationId);
+    else tunnel.delete('CONTROL_PLANE_ORGANIZATION_ID');
   }
-  ensure(['CONTROL_PLANE_API_KEY','CONTROL_PLANE_TUNNEL_ID','CONTROL_PLANE_ORGANIZATION_ID'].every(k=>tunnel.get(k)),'tunnel_settings_required');
+  ensure(['CONTROL_PLANE_API_KEY','CONTROL_PLANE_TUNNEL_ID'].every(k=>tunnel.get(k)),'tunnel_settings_required');
   tunnel.set('DOT_MCP_AUTH','Bearer '+token);
   return {config:c,runtimeEnv:runtime,tunnelEnv:tunnel};
 }
@@ -162,7 +164,7 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
     // Non-secret facts for the setup page: whether Tunnel fields may be left empty.
     summary(){
       const c=installed(),t=parseEnv(read('tunnel-runtime.env'));
-      return {installed:true,tunnelSaved:['CONTROL_PLANE_API_KEY','CONTROL_PLANE_TUNNEL_ID','CONTROL_PLANE_ORGANIZATION_ID'].every(k=>t.get(k)),bound:{qq:Boolean(c.qq?.ownerId),weixin:Boolean(c.weixin?.ownerId)}};
+      return {installed:true,tunnelSaved:['CONTROL_PLANE_API_KEY','CONTROL_PLANE_TUNNEL_ID'].every(k=>t.get(k)),bound:{qq:Boolean(c.qq?.ownerId),weixin:Boolean(c.weixin?.ownerId)}};
     },
     // One consumer per bot and Tunnel: pause the persistent service during setup.
     async prepare(){
@@ -195,15 +197,23 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
         writePrivate(file('tunnel-runtime.env'),envText(plan.tunnelEnv));
         writePrivate(file('config.json'),JSON.stringify(plan.config,null,2)+'\n');
         fs.mkdirSync(unitDir,{recursive:true});writePrivate(unitPath,tunnelUnit(prefix,plan.config.port),0o644);
-        for(const args of [['daemon-reload'],['enable',GATEWAY_UNIT],['enable',TUNNEL_UNIT],['restart',GATEWAY_UNIT],['restart',TUNNEL_UNIT]]){live();ensure(systemctl(...args)===0,'systemctl_failed');}
-        const deadline=Date.now()+deadlineMs;let gateway=false,tunnel=false;
-        while(Date.now()<deadline&&!(gateway&&tunnel)){
+        for(const args of [['daemon-reload'],['enable',GATEWAY_UNIT],['enable',TUNNEL_UNIT],['restart',GATEWAY_UNIT]]){live();ensure(systemctl(...args)===0,'systemctl_failed');}
+        const deadline=Date.now()+deadlineMs;let gateway=false;
+        while(Date.now()<deadline&&!gateway){
           live();
-          if(!gateway){const r=await probe(`http://127.0.0.1:${plan.config.port}/healthz`);try{gateway=r.status===200&&JSON.parse(r.body).mode==='live';}catch{}}
-          if(gateway&&!tunnel)tunnel=(await probe(`http://127.0.0.1:${TUNNEL_HEALTH_PORT}/readyz`)).status===200;
-          if(!(gateway&&tunnel))await pause(1000);
+          const r=await probe(`http://127.0.0.1:${plan.config.port}/healthz`);
+          try{gateway=r.status===200&&JSON.parse(r.body).mode==='live';}catch{}
+          if(!gateway)await pause(250);
         }
-        ensure(gateway,'gateway_not_healthy');ensure(tunnel,'tunnel_not_ready');live();
+        ensure(gateway,'gateway_not_healthy');live();
+        ensure(systemctl('restart',TUNNEL_UNIT)===0,'systemctl_failed');
+        let tunnel=false;
+        while(Date.now()<deadline&&!tunnel){
+          live();
+          tunnel=(await probe(`http://127.0.0.1:${TUNNEL_HEALTH_PORT}/readyz`)).status===200;
+          if(!tunnel)await pause(1000);
+        }
+        ensure(tunnel,'tunnel_not_ready');live();
         committed=true;
         return {service:'running',platform:data.platform,events:'enabled',autostart:'enabled',linger:linger()};
       }catch(e){

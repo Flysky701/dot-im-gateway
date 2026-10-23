@@ -52,6 +52,13 @@ test('handoff plan enables the platform, events and keeps an existing service to
   assert.equal(w.tunnelEnv.get('CONTROL_PLANE_API_KEY'),'synthetic-tunnel-key-only');assert.equal(w.tunnelEnv.get('DOT_MCP_AUTH'),'Bearer '+'r'.repeat(64));
   // Callback hosts are merged without duplicates.
   assert.deepEqual(planHandoff(qq,{config:{...config(),callbackHosts:['hooks.example.com','chatgpt.com']}}).config.callbackHosts,['hooks.example.com','chatgpt.com','.chatgpt.com','openai.com','.openai.com']);
+  // Organization ID is optional; omitting it or passing empty string removes it from tunnelEnv.
+  const pNoOrg=planHandoff({...qq,organizationId:''},{config:config(),tunnelEnv:new Map([['CONTROL_PLANE_ORGANIZATION_ID','old-org']])});
+  assert.equal(pNoOrg.tunnelEnv.has('CONTROL_PLANE_ORGANIZATION_ID'),false);
+  assert.equal(pNoOrg.tunnelEnv.get('CONTROL_PLANE_TUNNEL_ID'),'tunnel_synthetic');
+  const qqWithoutOrg={...qq};delete qqWithoutOrg.organizationId;
+  const pOmittedOrg=planHandoff(qqWithoutOrg,{config:config()});
+  assert.equal(pOmittedOrg.tunnelEnv.has('CONTROL_PLANE_ORGANIZATION_ID'),false);
 });
 
 test('handoff plan fails closed for another owner, missing Tunnel settings or incomplete data',()=>{
@@ -61,6 +68,7 @@ test('handoff plan fails closed for another owner, missing Tunnel settings or in
   assert.equal(planHandoff(qq,{config:bound}).config.qq.ownerId,'qq-owner-stable');
   assert.throws(()=>planHandoff({platform:'qq',qq:qq.qq},{config:config()}),/tunnel_settings_required/);
   assert.throws(()=>planHandoff({...qq,tunnelId:'bad id'},{config:config()}),/invalid_tunnel_settings/);
+  assert.throws(()=>planHandoff({...qq,organizationId:'bad_org'},{config:config()}),/invalid_tunnel_settings/);
   assert.throws(()=>planHandoff({platform:'qq',...tunnel},{config:config()}),/handoff_incomplete/);
   assert.throws(()=>planHandoff({platform:'other'},{config:config()}),/platform_required/);
 });
@@ -79,7 +87,7 @@ test('handoff prefixes and units stay inside reviewed absolute paths',()=>{
   assert.equal(safePrefix('/home/u/.local/lib/dot-im-gateway'),'/home/u/.local/lib/dot-im-gateway');
   const unit=tunnelUnit('/srv/dot/gw',8788);
   assert.match(unit,/^# Managed by dot-im-gateway handoff for prefix=\/srv\/dot\/gw\n/);
-  assert.match(unit,/--mcp.server-url http:\/\/127.0.0.1:8788\/mcp/);assert.match(unit,/Restart=always/);
+  assert.match(unit,/--mcp.server-url http:\/\/127.0.0.1:8788\/mcp/);assert.match(unit,/--mcp.startup-wait-timeout 30s/);assert.match(unit,/Restart=always/);
   assert.match(unit,/EnvironmentFile=\/srv\/dot\/gw\/tunnel-runtime.env/);assert.equal(unit.includes('Bearer'),false);
 });
 
@@ -134,6 +142,35 @@ test('handoff writes private files, a marked Tunnel unit and starts both service
   // Re-running for the same owner reuses the saved Tunnel settings and token.
   const again=s.make();await again.prepare();await again.commit({platform:'qq',qq:qq.qq});
   assert.equal(parseEnv(fs.readFileSync(path.join(s.prefix,'runtime.env'),'utf8')).get('DOT_GATEWAY_TOKEN'),'t'.repeat(64));
+});
+
+test('handoff delays tunnel restart until gateway healthz succeeds',{skip:process.platform==='win32'},async t=>{
+  const s=installation(t);
+  let healthzAttempts=0;
+  const probe=async url=>{
+    s.probes.push(url);
+    if(url.endsWith('/healthz')){
+      healthzAttempts++;
+      if(healthzAttempts<3)return {status:503,body:''};
+      return {status:200,body:JSON.stringify({ok:true,mode:'live'})};
+    }
+    assert.ok(s.calls.includes('restart dot-im-tunnel.service'),'tunnel restarted before readyz probed');
+    return {status:200,body:'ok'};
+  };
+  const originalSystemctl=s.systemctl;
+  s.systemctl=(...args)=>{
+    if(args[0]==='restart'&&args[1]==='dot-im-tunnel.service'){
+      assert.ok(healthzAttempts>=3,'tunnel restarted only after healthz succeeded');
+    }
+    return originalSystemctl(...args);
+  };
+  const h=s.make({probe});
+  await h.prepare();
+  const result=await h.commit({...qq,organizationId:''});
+  assert.equal(result.service,'running');
+  assert.equal(parseEnv(fs.readFileSync(path.join(s.prefix,'tunnel-runtime.env'),'utf8')).has('CONTROL_PLANE_ORGANIZATION_ID'),false);
+  assert.equal(s.probes.filter(u=>u.endsWith('/healthz')).length,3);
+  assert.equal(s.probes.filter(u=>u.endsWith('/readyz')).length,1);
 });
 
 test('handoff restores paused services when setup does not finish',{skip:process.platform==='win32'},async t=>{
@@ -325,7 +362,8 @@ test('connector does not commit when login fails before the owner is bound',asyn
   connector.start({platform:'weixin',tunnelId:'',organizationId:'',runtimeKey:'',confirmed:true});while(!ended)await next();
   assert.equal(commits,0);assert.equal(restored,1);assert.deepEqual(ended,{stage:'failed',code:'qr_expired'});
   // Partially filled Tunnel fields never mix with saved ones.
-  assert.throws(()=>connectionInput({platform:'weixin',tunnelId:'tunnel_x',organizationId:'',runtimeKey:'',confirmed:true},{tunnelSaved:true}),/invalid_identifier/);
+  assert.throws(()=>connectionInput({platform:'weixin',tunnelId:'tunnel_x',organizationId:'',runtimeKey:'',confirmed:true},{tunnelSaved:true}),/invalid_secret_shape/);
+  assert.throws(()=>connectionInput({platform:'weixin',tunnelId:'tunnel_x',organizationId:'bad_org',runtimeKey:'synthetic-tunnel-key-only',confirmed:true},{tunnelSaved:true}),/invalid_identifier/);
 });
 
 test('connector stop while handing off saves nothing and reports stopped',async()=>{
