@@ -16,19 +16,27 @@
 
 ## 交给 Agent 一句话搞定
 
-把下面一句发给能操作终端的 Agent（例如 Codex），不用另装 Skill 包。Agent 会自己选路线、下载、安装、排错和验收；只有登录、创建密钥、手机扫码、在 ChatGPT 添加插件时才叫你。
+把下面对应模式的指令发给能操作终端的 Agent（例如 Codex），不用另装 Skill 包。Agent 会自动判断自身具备的权限并执行最佳路线（或者指定 Plan A / B / C）：
 
-```text
-请按这个 Skill 帮我把 QQ 或微信接到我已有的 dot，全程你来操作，需要我登录、扫码或粘贴时再叫我：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/connect-dot-im-gateway/SKILL.md
-```
+- **Plan A（全授权全自动，小白只扫码）**：
+  > 适合具备「终端/SSH + 已登录浏览器页面代点（Browser / Playwright）」权限的 Agent：
+  ```text
+  请按这个 Skill 执行 Plan A 全自动帮我把 QQ/微信接入已有的 dot：自动部署服务器、在浏览器建好 Tunnel 与受限 Key、打开连接页，我只需手机扫码；交接后自动在 ChatGPT 添加插件并订阅，最后提醒我发「你好」验收：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/connect-dot-im-gateway/SKILL.md
+  ```
 
-已确定用服务器：
+- **Plan B（半自动跳页领航，小白只点确定/复制/扫码）**：
+  > 适合具备「终端/SSH + 打开本机浏览器/写剪贴板」权限的 Agent：
+  ```text
+  请按这个 Skill 执行 Plan B 帮我把 QQ/微信接入已有的 dot：你来部署服务器，帮我依次弹出 Tunnels、API Keys 与连接页面，我填两项并扫码；交接后自动弹出 ChatGPT 插件页并把名称和订阅指令写入剪贴板，我按提示粘贴完成：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/connect-dot-im-gateway/SKILL.md
+  ```
 
-```text
-请按这个 Skill 在我的服务器 <SSH 别名> 上部署 dot-im-gateway 并连接 QQ/微信，全程你来操作，需要我登录、扫码或粘贴时再叫我：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/deploy-dot-im-gateway/SKILL.md
-```
+- **Plan C（服务器代配 + 极简分步向导）**：
+  > 适合仅具备服务器 SSH 权限、无法操控用户电脑浏览器的 Agent：
+  ```text
+  请按这个 Skill 在我的服务器 <SSH 别名> 上执行 Plan C 部署 dot-im-gateway：全程你来操作并监控状态，每次只给我一步极简提示，需要我本地转发、扫码或在 ChatGPT 填通道时再叫我：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/deploy-dot-im-gateway/SKILL.md
+  ```
 
-需要你亲自做的只有：登录 OpenAI Platform，创建/选择 Tunnel 和只带 Tunnels Read+Use 的运行密钥（粘贴到本机连接页，不发聊天）；手机扫码；在 [ChatGPT Plugins](https://chatgpt.com/plugins) 添加 Connection 为 Tunnel 的插件，并把连接页给出的订阅提示词发给原 dot；发一条消息确认收到回复。
+只需两步准备：① 在 OpenAI Platform 创建或复用关联 ChatGPT 工作区的 Tunnel，② 创建仅带 `Tunnels: Read + Use` 的 Restricted 密钥（直接填入连接页，不发聊天，无需组织 ID）。移交常驻服务后，连接页会**实时显示 ChatGPT 插件连通和事件订阅的对勾清单**！
 
 ## 自己动手（服务器）
 
@@ -40,7 +48,7 @@ sudo loginctl enable-linger "$USER"    # 可选但推荐：退出登录后、开
 ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<next>'
 ```
 
-打开终端里显示的链接 → 选平台、填 Tunnel 三项、手机扫码 → 页面显示「常驻服务已接管」并给出订阅提示词。之后用 `bash scripts/server-status.sh` 查看状态（一行 JSON，`"ok": true` 即正常）。详见 [部署手册](docs/DEPLOYMENT.md)。
+打开终端里显示的链接 → 选平台、填 Tunnel 两项（通道编号与受限密钥）、手机扫码 → 页面显示实时状态清单（等待 ChatGPT 插件连通与事件订阅）。之后用 `bash scripts/server-status.sh` 查看状态（一行 JSON，`"ok": true` 即正常）。详见 [部署手册](docs/DEPLOYMENT.md)。
 
 ## 出问题怎么办
 
@@ -49,7 +57,7 @@ ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<next>'
 | 断网，QQ / 微信 / Tunnel 暂时不可用 | 常驻服务自动退避重连 | 无 |
 | 服务崩溃 | systemd 自动重启 | 无 |
 | 服务器重启 | 开机自启（需已开启 linger） | 无 |
-| 凭据失效、机器人重置、微信登录过期 | 记录错误类别，该平台停止收发 | 让 Agent 重新运行 handoff 扫码；Tunnel 三项留空即沿用 |
+| 凭据失效、机器人重置、微信登录过期 | 记录错误类别，该平台停止收发 | 让 Agent 重新运行 handoff 扫码；Tunnel 两项留空即沿用 |
 | 想再加一个平台 | — | 再运行一次 handoff，选另一个平台 |
 | 想换绑另一个人或机器人 | 同一数据目录拒绝换人，防止消息发错人 | 卸载后用新目录重装 |
 | 回复显示 `uncertain` | 不自动重发 | 核对聊天记录后用 `reconcile` 处理，见 [运维手册](docs/OPERATIONS.md) |

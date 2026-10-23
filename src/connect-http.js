@@ -18,7 +18,7 @@ export function connectServer({token,connector,assets,finish=()=>{}}){
       let input;try{input=JSON.parse(Buffer.concat(chunks));}catch{throw new Fault('invalid_json');}
       if(req.url==='/connect')connector.start(input);
       else if(req.url==='/confirm')connector.command(input);
-      else {ensure(input&&Object.keys(input).length===0,'invalid_input');if(req.url==='/stop')await connector.stop();else ensure(connector.snapshot().stage==='connected','not_connected');}
+      else {ensure(input&&Object.keys(input).length===0,'invalid_input');if(req.url==='/stop')await connector.stop();else ensure(['connected','handed_off'].includes(connector.snapshot().stage),'not_connected');}
       send(200,connector.snapshot());if(req.url==='/finish')setImmediate(finish);
     }catch(e){send(400,{error:e instanceof Fault?e.code:'operation_failed'});}finally{busy=false;}
   });

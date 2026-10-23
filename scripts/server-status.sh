@@ -37,12 +37,36 @@ try:
     queue = json.loads(sh(node, os.path.join(prefix, 'current/bin/gateway.js'), 'status', '--config', os.path.join(prefix, 'config.json')))
 except Exception:
     queue = None
+tunnel_hint = None
+try:
+    with open(os.path.join(prefix, 'tunnel-runtime.env'), encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('CONTROL_PLANE_TUNNEL_ID='):
+                val = line.split('=', 1)[1].strip("'\"")
+                if val.startswith('tunnel_') and len(val) >= 13:
+                    tunnel_hint = val[:13] + '...'
+except Exception:
+    pass
+control_plane = None
+mcp_requests = 0
+h_status, h_body = get('http://127.0.0.1:8790/health?details=true')
+if h_status == 200 and h_body:
+    try:
+        hd = json.loads(h_body)
+        control_plane = hd.get('components', {}).get('control-plane', {}).get('state')
+        mcp_requests = int(hd.get('components', {}).get('dispatcher', {}).get('details', {}).get('completed', 0))
+    except Exception:
+        pass
 r = {
     'installed': os.path.isfile(os.path.join(prefix, '.dot-im-gateway')),
     'gateway': sh('systemctl', '--user', 'is-active', 'dot-im-gateway.service') or 'unknown',
     'tunnel': sh('systemctl', '--user', 'is-active', 'dot-im-tunnel.service') or 'unknown',
     'gateway_health': status == 200, 'mode': mode,
     'tunnel_ready': get('http://127.0.0.1:8790/readyz')[0] == 200,
+    'tunnel_hint': tunnel_hint,
+    'control_plane': control_plane,
+    'mcp_requests': mcp_requests,
     'platforms': [p for p in ('qq', 'weixin') if c.get(p, {}).get('enabled')],
     'events': bool(c.get('allowSubscriptions')),
     'linger': sh('loginctl', 'show-user', os.environ.get('USER', ''), '--property=Linger', '--value') or 'unknown',

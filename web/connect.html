@@ -89,10 +89,27 @@
     </form>
     <button id="approve-app" type="button" hidden>确认使用此机器人</button>
     <div id="handed" hidden>
-      <p class="ok-note">后台服务已启动，支持断线重连与开机自启。</p>
+      <ul class="status-list">
+        <li class="done">✓ 服务器常驻已启动（断线重连 · 开机自启）</li>
+        <li id="chk-mcp">⏳ 等待 ChatGPT 连接插件…</li>
+        <li id="chk-sub">⏳ 等待原 dot 完成事件订阅…</li>
+      </ul>
       <p id="linger-warning" class="warn" hidden>未开启 linger，退出 SSH 可能停服：<code>sudo loginctl enable-linger $USER</code></p>
-      <label for="dot-prompt">最后一步：发给已添加插件的原 dot<textarea id="dot-prompt" readonly rows="5"></textarea></label>
-      <button class="quiet" type="button" data-copy="dot-prompt">复制给 dot 的指令</button>
+      <div id="mcp-guide" class="guide-box">
+        <div class="guide-step">
+          <span class="label-row">
+            <strong>① 首次在 ChatGPT 添加插件</strong>
+            <a href="https://chatgpt.com/plugins" target="_blank" rel="noopener noreferrer">打开插件页 ↗</a>
+          </span>
+          <span class="field-tip">名称填 <code>dot-im-gateway</code> · Connection 选 <b>Tunnel</b>（<code id="tunnel-hint">同上</code>）· Authentication 选 <b>None</b>（勿选 OAuth）</span>
+        </div>
+        <div class="guide-step">
+          <label for="dot-prompt"><strong>② 发给已启用该插件的原 dot</strong><textarea id="dot-prompt" readonly rows="3"></textarea></label>
+          <button class="quiet" type="button" data-copy="dot-prompt">复制订阅指令</button>
+        </div>
+      </div>
+      <button id="close-handed" class="quiet" type="button">关闭此页面</button>
+      <button id="finish-handed" type="button" hidden>完成并关闭页面</button>
     </div>
     <div id="complete" hidden>
       <p class="ok-note">在 ChatGPT 让 dot 读取并回复一条私聊消息，手机收到即完成。</p>

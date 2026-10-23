@@ -31,7 +31,8 @@ export class Connector {
     Object.assign(this,{dataDir,startTunnel,startQrConnect,onEnd,runners:{qq,weixin},handoff});
     // Non-secret handoff facts only; summary() fails closed when no service is installed.
     this.handoffInfo=handoff?handoff.summary():null;
-    this.state=handoff?{stage:'idle',mode:'handoff',tunnelSaved:this.handoffInfo.tunnelSaved}:{stage:'idle'};this.commands=new EventEmitter();this.abort=new AbortController();this.task=null;this.tunnel=null;this.ending=false;this.tunnelTask=null;
+    this.statusTimer=null;
+    this.state=handoff?{stage:'idle',mode:'handoff',tunnelSaved:this.handoffInfo.tunnelSaved,tunnelHint:this.handoffInfo.tunnelHint||''}:{stage:'idle'};this.commands=new EventEmitter();this.abort=new AbortController();this.task=null;this.tunnel=null;this.ending=false;this.tunnelTask=null;
     // A stop (button or Ctrl+C) always wins over a pending handoff: nothing is saved.
     this.stopRequested=false;this.commitAbort=new AbortController();
   }
@@ -92,7 +93,31 @@ export class Connector {
         if(handoffReady&&bound&&this.state.stage!=='failed'&&!this.stopRequested){
           try{
             const result=await this.handoff.commit({platform:input.platform,...(reuse?{}:{tunnelId:input.tunnelId,organizationId:input.organizationId,runtimeKey:input.runtimeKey}),[input.platform]:bound},{signal:this.commitAbort.signal});
-            this.state={stage:'handed_off',platform:input.platform,service:result.service,events:result.events,autostart:result.autostart,linger:result.linger};
+            this.state={stage:'handed_off',platform:input.platform,service:result.service,events:result.events,autostart:result.autostart,linger:result.linger,tunnelHint:result.tunnelHint||'',mcpConnected:false,subscribed:false};
+            if(typeof this.handoff.liveStatus==='function'&&!this.stopRequested){
+              try{Object.assign(this.state,await this.handoff.liveStatus(input.platform));}catch{}
+              if(!this.state.subscribed&&!this.stopRequested){
+                let checking=false;const deadline=Date.now()+600000;
+                this.statusTimer=setInterval(async()=>{
+                  if(checking||this.state.stage!=='handed_off'||this.stopRequested||Date.now()>deadline){
+                    if(Date.now()>deadline||this.state.stage!=='handed_off'||this.stopRequested){clearInterval(this.statusTimer);this.statusTimer=null;}
+                    return;
+                  }
+                  checking=true;
+                  try{
+                    const st=await this.handoff.liveStatus(input.platform);
+                    if(this.state.stage==='handed_off'){
+                      if(st.mcpConnected)this.state.mcpConnected=true;
+                      if(st.subscribed){
+                        this.state.subscribed=true;this.state.mcpConnected=true;
+                        clearInterval(this.statusTimer);this.statusTimer=null;
+                      }
+                    }
+                  }catch{}finally{checking=false;}
+                },1500);
+                this.statusTimer?.unref?.();
+              }
+            }
           }catch(e){this.state=this.stopRequested?{stage:'stopped'}:{stage:'failed',code:e instanceof Fault?e.code:'handoff_failed'};}
         }
         try{await this.handoff.restore();}catch{}
@@ -108,5 +133,5 @@ export class Connector {
     else {ensure(this.state.stage==='verify_code','confirmation_not_expected');ensure(/^[0-9]{1,12}$/.test(input.value),'invalid_verify_code');}
     this.state={stage:'connecting',platform:this.state.platform};this.commands.emit('line',input.value);return this.snapshot();
   }
-  async stop(){this.stopRequested=true;this.commitAbort.abort();this.abort.abort();this.commands.emit('line','STOP');if(this.task)await this.task;else{this.state={stage:'stopped'};this.onEnd(this.snapshot());}}
+  async stop(){if(this.statusTimer){clearInterval(this.statusTimer);this.statusTimer=null;}this.stopRequested=true;this.commitAbort.abort();this.abort.abort();this.commands.emit('line','STOP');if(this.task)await this.task;else{this.state={stage:'stopped'};this.onEnd(this.snapshot());}}
 }

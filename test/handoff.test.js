@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
 import {setImmediate as next} from 'node:timers/promises';
 import {example} from '../src/config.js';
 import {hostAllowed,safeURL} from '../src/network.js';
-import {planHandoff,envText,parseEnv,tunnelUnit,createHandoff,safePrefix,parseUnitShow,DEFAULT_CALLBACK_HOSTS} from '../src/handoff.js';
+import {planHandoff,envText,parseEnv,tunnelUnit,createHandoff,safePrefix,parseUnitShow,DEFAULT_CALLBACK_HOSTS,maskTunnel} from '../src/handoff.js';
 import {Connector,connectionInput} from '../src/connector.js';
 import {Fault} from '../src/util.js';
 import {Store} from '../src/store.js';
@@ -120,10 +121,10 @@ const snapshotFiles=s=>Object.fromEntries(['bin/tunnel-client','runtime.env','tu
 
 test('handoff writes private files, a marked Tunnel unit and starts both services',{skip:process.platform==='win32'},async t=>{
   const s=installation(t),h=s.make();
-  assert.deepEqual(h.summary(),{installed:true,tunnelSaved:false,bound:{qq:false,weixin:false}});
+  assert.deepEqual(h.summary(),{installed:true,tunnelSaved:false,tunnelHint:'',bound:{qq:false,weixin:false}});
   await h.prepare();assert.equal(s.active.has('dot-im-gateway.service'),false);
   const result=await h.commit(qq);
-  assert.deepEqual(result,{service:'running',platform:'qq',events:'enabled',autostart:'enabled',linger:false});
+  assert.deepEqual(result,{service:'running',platform:'qq',events:'enabled',autostart:'enabled',linger:false,tunnelHint:'tunnel_synthe...'});
   for(const f of ['runtime.env','tunnel-runtime.env','config.json'])assert.equal(mode(path.join(s.prefix,f)),0o600,f);
   assert.equal(mode(path.join(s.prefix,'bin/tunnel-client')),0o700);
   const runtime=parseEnv(fs.readFileSync(path.join(s.prefix,'runtime.env'),'utf8'));
@@ -133,11 +134,11 @@ test('handoff writes private files, a marked Tunnel unit and starts both service
   const unit=fs.readFileSync(path.join(s.home,'.config/systemd/user/dot-im-tunnel.service'),'utf8');
   assert.match(unit,new RegExp('^# Managed by dot-im-gateway handoff for prefix='+s.prefix));
   for(const c of ['daemon-reload','enable dot-im-gateway.service','enable dot-im-tunnel.service','restart dot-im-gateway.service','restart dot-im-tunnel.service'])assert.ok(s.calls.includes(c),c);
-  assert.deepEqual(s.probes,['http://127.0.0.1:8788/healthz','http://127.0.0.1:8790/readyz']);
+  assert.deepEqual(s.probes,['http://127.0.0.1:8788/healthz','http://127.0.0.1:8790/readyz','http://127.0.0.1:8790/health?details=true']);
   // Committed: restore must not restart anything a second time.
   const before=s.calls.length;await h.restore();assert.equal(s.calls.length,before);
   // The saved Tunnel settings are reported (without values) for the next re-authorisation.
-  assert.deepEqual(s.make().summary(),{installed:true,tunnelSaved:true,bound:{qq:true,weixin:false}});
+  assert.deepEqual(s.make().summary(),{installed:true,tunnelSaved:true,tunnelHint:'tunnel_synthe...',bound:{qq:true,weixin:false}});
   assert.equal(JSON.stringify(s.make().summary()).includes('synthetic'),false);
   // Re-running for the same owner reuses the saved Tunnel settings and token.
   const again=s.make();await again.prepare();await again.commit({platform:'qq',qq:qq.qq});
@@ -331,12 +332,12 @@ test('connector hands a bound result to the service without starting a transient
     o.emit({stage:'gateway_ready',url:'http://127.0.0.1:1/mcp'});
     assert.equal(o.signal.aborted,true);
   }});
-  assert.deepEqual(connector.snapshot(),{stage:'idle',mode:'handoff',tunnelSaved:true});
+  assert.deepEqual(connector.snapshot(),{stage:'idle',mode:'handoff',tunnelSaved:true,tunnelHint:''});
   const raw={platform:'weixin',tunnelId:'',organizationId:'',runtimeKey:'',confirmed:true};
   connector.start(raw);while(!ended)await next();
   assert.equal(prepared,1);assert.equal(restored,1);
   assert.deepEqual(committed,{platform:'weixin',weixin:{token:'synthetic-weixin-token',botId:'wx-bot',ownerId:'wx-owner-stable',origin:'https://ilinkai.weixin.qq.com'}});
-  assert.deepEqual(ended,{stage:'handed_off',platform:'weixin',service:'running',events:'enabled',autostart:'enabled',linger:true});
+  assert.deepEqual(ended,{stage:'handed_off',platform:'weixin',service:'running',events:'enabled',autostart:'enabled',linger:true,tunnelHint:'',mcpConnected:false,subscribed:false});
   assert.equal(JSON.stringify(ended).includes('synthetic'),false);
 });
 
@@ -401,13 +402,63 @@ test('connector and the real handoff persist an official Weixin binding end to e
     o.onBound({token:'synthetic-weixin-token',botId:WX_BOT,ownerId:WX_OWNER,origin:'https://ilinkai.weixin.qq.com'});
     o.emit({stage:'gateway_ready',url:'http://127.0.0.1:1/mcp'});
   }});
-  assert.deepEqual(connector.snapshot(),{stage:'idle',mode:'handoff',tunnelSaved:false});
+  assert.deepEqual(connector.snapshot(),{stage:'idle',mode:'handoff',tunnelSaved:false,tunnelHint:''});
   connector.start({platform:'weixin',...tunnel,confirmed:true});while(!ended)await next();
-  assert.deepEqual(ended,{stage:'handed_off',platform:'weixin',service:'running',events:'enabled',autostart:'enabled',linger:false});
+  assert.deepEqual(ended,{stage:'handed_off',platform:'weixin',service:'running',events:'enabled',autostart:'enabled',linger:false,tunnelHint:'tunnel_synthe...',mcpConnected:false,subscribed:false});
   const saved=JSON.parse(fs.readFileSync(path.join(s.prefix,'config.json'),'utf8'));
   assert.equal(saved.weixin.enabled,true);assert.equal(saved.weixin.ownerId,WX_OWNER);assert.equal(saved.weixin.botId,WX_BOT);
   assert.equal(parseEnv(fs.readFileSync(path.join(s.prefix,'runtime.env'),'utf8')).get(saved.weixin.tokenEnv),'synthetic-weixin-token');
   assert.equal(parseEnv(fs.readFileSync(path.join(s.prefix,'tunnel-runtime.env'),'utf8')).get('CONTROL_PLANE_TUNNEL_ID'),'tunnel_synthetic');
   assert.deepEqual([...s.active].sort(),['dot-im-gateway.service','dot-im-tunnel.service']);
   assert.equal(JSON.stringify(ended).includes('synthetic'),false);
+});
+
+test('maskTunnel redacts tunnel identifier safely',()=>{
+  assert.equal(maskTunnel('tunnel_6adb2f1234567890'),'tunnel_6adb2f...');
+  assert.equal(maskTunnel('tunnel_abc1234'),'tunnel_abc123...');
+  assert.equal(maskTunnel('tunnel_short'),'');
+  assert.equal(maskTunnel('not_a_tunnel'),'');
+  assert.equal(maskTunnel(''),'');
+  assert.equal(maskTunnel(null),'');
+  assert.equal(maskTunnel(123),'');
+});
+
+test('handoff liveStatus safely inspects tunnel metrics and subscriptions table',{skip:process.platform==='win32'},async t=>{
+  const s=installation(t);
+  let detailsBody=JSON.stringify({ready:true,components:{dispatcher:{details:{completed:3}},'control-plane':{status:'ok'}}});
+  const customProbe=async url=>{
+    if(url.endsWith('/health?details=true'))return detailsBody?{status:200,body:detailsBody}:{status:0,body:''};
+    return url.endsWith('/healthz')?{status:200,body:JSON.stringify({ok:true,mode:'live'})}:{status:200,body:'ok'};
+  };
+  const h=s.make({probe:customProbe});
+  const status1=await h.liveStatus('qq');
+  assert.deepEqual(status1,{mcpConnected:true,subscribed:false});
+
+  const dataDir=path.join(s.prefix,'data');
+  fs.mkdirSync(dataDir,{recursive:true});
+  const dbPath=path.join(dataDir,'gateway.sqlite');
+  const db=new DatabaseSync(dbPath);
+  db.exec('CREATE TABLE IF NOT EXISTS subscriptions (id TEXT PRIMARY KEY, active INTEGER, platform TEXT, expires INTEGER)');
+  db.prepare('INSERT INTO subscriptions VALUES(?,?,?,?)').run('sub-1',1,'qq',Date.now()+100000);
+  db.close();
+
+  const status2=await h.liveStatus('qq');
+  assert.deepEqual(status2,{mcpConnected:true,subscribed:true});
+
+  const status3=await h.liveStatus('weixin');
+  assert.deepEqual(status3,{mcpConnected:true,subscribed:false});
+
+  detailsBody='';
+  const status4=await h.liveStatus('weixin');
+  assert.deepEqual(status4,{mcpConnected:false,subscribed:false});
+});
+
+test('handoff commit rejects with tunnel_auth_failed if control plane has consecutive failures',{skip:process.platform==='win32'},async t=>{
+  const s=installation(t);
+  const failProbe=async url=>{
+    if(url.endsWith('/health?details=true'))return {status:200,body:JSON.stringify({components:{'control-plane':{status:'unauthorized',details:{consecutive_failures:2}}}})};
+    return url.endsWith('/healthz')?{status:200,body:JSON.stringify({ok:true,mode:'live'})}:{status:200,body:'ok'};
+  };
+  const h=s.make({probe:failProbe});
+  await assert.rejects(h.commit(qq),/tunnel_auth_failed/);
 });

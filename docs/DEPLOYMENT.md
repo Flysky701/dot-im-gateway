@@ -21,7 +21,7 @@ handoff 的行为见 [单文件程序](PORTABLE.md#移交常驻服务--handoff)�
 bash scripts/server-status.sh    # 一行 JSON：服务状态、live、tunnel 就绪、已启用平台、linger、队列计数；不含秘密
 ```
 
-最后在 [ChatGPT Plugins](https://chatgpt.com/plugins) 添加 Connection 为 Tunnel 的插件（认证选无，网关令牌由 tunnel-client 附带），把连接页给出的订阅提示词发给原 dot，并做一次手机实收验收。
+最后在 [ChatGPT Plugins](https://chatgpt.com/plugins) 添加 Connection 为 Tunnel 的插件（认证选无，网关令牌由 tunnel-client 自动附带），把连接页给出的订阅提示词发给原 dot，连接页会实时显示 ChatGPT 连通与事件订阅状态，并做一次手机实收验收。
 
 下面是各步骤的底层说明，供手动排查或不使用 handoff 时参考。所有 `deploy.py` 命令默认只展示计划；`--apply` 才修改选定 prefix 和本用户的 systemd unit。
 

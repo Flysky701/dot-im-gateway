@@ -416,6 +416,56 @@ textarea {
   line-height: 1.5;
 }
 
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.status-list li {
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border-radius: 7px;
+  background: #f7faf8;
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+}
+
+.status-list li.done {
+  background: #edf5f0;
+  border-color: #badcc6;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.guide-box {
+  margin: 14px 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-step {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #fafcfa;
+}
+
+.guide-step label {
+  margin: 0;
+}
+
+.guide-step strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
 #error {
   color: #b3261e;
   background: #fdf2f2;

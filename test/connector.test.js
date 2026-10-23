@@ -58,3 +58,42 @@ test('connection page enforces capability, loopback host, origin, operation sche
   const page=await call('/');assert.equal(page.status,200);assert.match(page.headers['content-security-policy'],/frame-ancestors 'none'/);
   assert.equal((await call('/connect',input())).status,200);assert.equal(calls.length,1);
 });
+
+test('connection page allows /finish when stage is handed_off',async t=>{
+  const token='synthetic-local-capability-0000000000000';let finished=false;
+  const connector={snapshot:()=>({stage:'handed_off',service:'running',events:'enabled',autostart:'enabled',linger:true}),start:()=>{},stop:async()=>{},command:()=>{}};
+  const server=connectServer({token,connector,assets:{'/':{type:'text/html',body:'<p>done</p>'}},finish:()=>{finished=true;}});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));const port=server.address().port;
+  const res=await new Promise((resolve,reject)=>{
+    const req=http.request({host:'127.0.0.1',port,path:'/finish',method:'POST',headers:{Authorization:'Bearer '+token,Origin:'http://127.0.0.1:'+port,'Content-Type':'application/json'}},r=>{let b='';r.on('data',x=>b+=x);r.on('end',()=>resolve({status:r.statusCode,body:b}));});req.on('error',reject);req.end('{}');
+  });
+  assert.equal(res.status,200);
+  await new Promise(r=>setImmediate(r));
+  assert.equal(finished,true);
+});
+
+test('connector in handoff mode polls liveStatus and updates mcpConnected and subscribed',async()=>{
+  let statusPolls=0,ended;
+  const handoff={
+    summary:()=>({installed:true,tunnelSaved:true,tunnelHint:'tunnel_test12...'}),
+    prepare:async()=>{},
+    restore:async()=>{},
+    commit:async()=>({service:'running',platform:'qq',events:'enabled',autostart:'enabled',linger:true,tunnelHint:'tunnel_test12...'}),
+    liveStatus:async()=>{statusPolls++;return statusPolls>=2?{mcpConnected:true,subscribed:true}:{mcpConnected:true,subscribed:false};}
+  };
+  const connector=new Connector({dataDir:'synthetic',handoff,onEnd:s=>ended=s,startTunnel:()=>{throw Error('no');},qq:async(i,o)=>{
+    o.onBound({secret:'qq-sec',appId:'app1',ownerId:'own1'});
+    o.emit({stage:'gateway_ready',url:'http://127.0.0.1:1/mcp'});
+  }});
+  assert.equal(connector.snapshot().tunnelHint,'tunnel_test12...');
+  connector.start({platform:'qq',appId:'app1',secret:'s'.repeat(20),confirmed:true});
+  while(!ended)await next();
+  assert.equal(connector.snapshot().stage,'handed_off');
+  assert.equal(connector.snapshot().mcpConnected,true);
+  assert.equal(connector.snapshot().subscribed,false);
+  const deadline=Date.now()+4000;
+  while(Date.now()<deadline&&!connector.snapshot().subscribed)await new Promise(r=>setTimeout(r,100));
+  assert.equal(connector.snapshot().subscribed,true);
+  assert.equal(connector.snapshot().mcpConnected,true);
+  await connector.stop();
+});

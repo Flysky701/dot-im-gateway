@@ -38,9 +38,9 @@ async function main(){
   ensure(manifest.platform===process.platform&&manifest.arch===process.arch,'wrong_platform_binary');
   const release=await lock(path.join(os.tmpdir(),'dot-im-connect-single-instance'));
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'dot-im-connect-'));fs.chmodSync(dir,0o700);
-  const identity=fs.statSync(dir);let server,connector,closing=false,idleTimer,endTimer;const children=new Set();
+  const identity=fs.statSync(dir);let server,connector,closing=false,idleTimer,endTimer,subPollInterval;const children=new Set();
   const cleanup=async()=>{
-    if(closing)return;closing=true;clearTimeout(idleTimer);clearTimeout(endTimer);
+    if(closing)return;closing=true;clearTimeout(idleTimer);clearTimeout(endTimer);clearInterval(subPollInterval);
     if(connector)await connector.stop();for(const child of children)await childStop(child);
     if(server){server.closeAllConnections();await new Promise(r=>server.close(()=>r()));}
     const stat=fs.lstatSync(dir);ensure(!stat.isSymbolicLink()&&stat.dev===identity.dev&&stat.ino===identity.ino,'cleanup_identity_mismatch');
@@ -80,12 +80,29 @@ async function main(){
     };
     const handoff=handoffPrefix?createHandoff({prefix:handoffPrefix,tunnelBinary:binary}):null;
     connector=preview?{snapshot:()=>({stage:'idle'}),start:()=>{throw new Fault('preview_network_disabled');},command:()=>{throw new Fault('preview_network_disabled');},stop:async()=>{}}:new Connector({dataDir:path.join(dir,'data'),startTunnel,handoff,onEnd:s=>{
-      safePrint({stage:s.stage,...(s.code?{code:s.code}:{}),...(s.stage==='handed_off'?{service:s.service,events:s.events,autostart:s.autostart,linger:s.linger}:{})});
-      // Keep the page reachable briefly so it can show the final result.
-      endTimer=setTimeout(()=>{void cleanup();},['failed','handed_off'].includes(s.stage)?20000:500);
+      safePrint({stage:s.stage,...(s.code?{code:s.code}:{}),...(s.stage==='handed_off'?{service:s.service,events:s.events,autostart:s.autostart,linger:s.linger,tunnelHint:s.tunnelHint,subscribed:s.subscribed,mcpConnected:s.mcpConnected}:{})});
+      if(s.stage==='handed_off'){
+        endTimer=setTimeout(()=>{void cleanup();},s.subscribed?15000:600000);
+        if(!s.subscribed){
+          subPollInterval=setInterval(()=>{
+            if(connector.snapshot().subscribed===true){
+              clearInterval(subPollInterval);subPollInterval=null;
+              safePrint({stage:'mcp_subscribed',platform:s.platform});
+              clearTimeout(endTimer);
+              endTimer=setTimeout(()=>{void cleanup();},15000);
+            }
+          },1500);
+          subPollInterval?.unref?.();
+        }
+      }else{
+        endTimer=setTimeout(()=>{void cleanup();},s.stage==='failed'?20000:500);
+      }
     },startQrConnect:qqWorkerStart(text('qq-sdk'))});
     const token=preview?'synthetic-preview-access-0000000000000000':randomBytes(32).toString('hex');
-    server=connectServer({token,connector,assets:{'/':{body:text('html'),type:'text/html; charset=utf-8'},'/app.js':{body:text('js'),type:'text/javascript; charset=utf-8'},'/style.css':{body:text('css'),type:'text/css; charset=utf-8'}},finish:()=>{server.closeAllConnections();server.close();safePrint({stage:'page_closed',bridge_running:true});}});
+    server=connectServer({token,connector,assets:{'/':{body:text('html'),type:'text/html; charset=utf-8'},'/app.js':{body:text('js'),type:'text/javascript; charset=utf-8'},'/style.css':{body:text('css'),type:'text/css; charset=utf-8'}},finish:()=>{
+      if(handoffPrefix){void cleanup();}
+      else{server.closeAllConnections();server.close();safePrint({stage:'page_closed',bridge_running:true});}
+    }});
     await new Promise((r,j)=>{server.once('error',j);server.listen(port,'127.0.0.1',r);});
     const url='http://127.0.0.1:'+server.address().port+'/#'+token;
     // Printed only in the user's own terminal. Never save this temporary UI capability.

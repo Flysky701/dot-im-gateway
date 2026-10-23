@@ -20,6 +20,7 @@ const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 // accept any printable text without whitespace, as the official login returns it.
 const wxId=v=>typeof v==='string'&&/^[^\s\u0000-\u001f\u007f]{1,256}$/u.test(v);
 const sha=b=>createHash('sha256').update(b).digest('hex');
+export const maskTunnel=v=>typeof v==='string'&&/^tunnel_[A-Za-z0-9_-]{7,}$/.test(v)?v.slice(0,13)+'...':'';
 
 export function safePrefix(raw){
   ensure(typeof raw==='string'&&path.posix.isAbsolute(raw)&&/^[A-Za-z0-9_./-]+$/.test(raw)&&path.posix.resolve(raw)===raw&&raw.split('/').length>=3,'unsafe_prefix');
@@ -164,7 +165,34 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
     // Non-secret facts for the setup page: whether Tunnel fields may be left empty.
     summary(){
       const c=installed(),t=parseEnv(read('tunnel-runtime.env'));
-      return {installed:true,tunnelSaved:['CONTROL_PLANE_API_KEY','CONTROL_PLANE_TUNNEL_ID'].every(k=>t.get(k)),bound:{qq:Boolean(c.qq?.ownerId),weixin:Boolean(c.weixin?.ownerId)}};
+      return {installed:true,tunnelSaved:['CONTROL_PLANE_API_KEY','CONTROL_PLANE_TUNNEL_ID'].every(k=>t.get(k)),tunnelHint:maskTunnel(t.get('CONTROL_PLANE_TUNNEL_ID')),bound:{qq:Boolean(c.qq?.ownerId),weixin:Boolean(c.weixin?.ownerId)}};
+    },
+    async liveStatus(platform){
+      let mcpConnected=false,subscribed=false;
+      try{
+        const r=await probe(`http://127.0.0.1:${TUNNEL_HEALTH_PORT}/health?details=true`);
+        if(r.status===200&&r.body){
+          try{
+            const d=JSON.parse(r.body);
+            if(d?.ready&&Number(d?.components?.dispatcher?.details?.completed||0)>0)mcpConnected=true;
+          }catch{}
+        }
+      }catch{}
+      try{
+        const raw=JSON.parse(read('config.json')),dataDir=path.resolve(prefix,raw.dataDir);
+        const db=openMeta(dataDir);
+        if(db){
+          try{
+            const hasSub=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='subscriptions'").get());
+            if(hasSub){
+              const now=Date.now();
+              const row=platform?db.prepare("SELECT count(*) n FROM subscriptions WHERE active=1 AND platform=? AND expires>?").get(platform,now):db.prepare("SELECT count(*) n FROM subscriptions WHERE active=1 AND expires>?").get(now);
+              if(Number(row?.n||0)>0){subscribed=true;mcpConnected=true;}
+            }
+          }finally{db.close();}
+        }
+      }catch{}
+      return {mcpConnected,subscribed};
     },
     // One consumer per bot and Tunnel: pause the persistent service during setup.
     async prepare(){
@@ -214,8 +242,15 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
           if(!tunnel)await pause(1000);
         }
         ensure(tunnel,'tunnel_not_ready');live();
+        try{
+          const h=await probe(`http://127.0.0.1:${TUNNEL_HEALTH_PORT}/health?details=true`);
+          if(h.status===200&&h.body){
+            const d=JSON.parse(h.body),cp=d?.components?.['control-plane'];
+            if(Number(cp?.details?.consecutive_failures||0)>0&&cp?.status!=='ok')throw new Fault('tunnel_auth_failed');
+          }
+        }catch(e){if(e instanceof Fault)throw e;}
         committed=true;
-        return {service:'running',platform:data.platform,events:'enabled',autostart:'enabled',linger:linger()};
+        return {service:'running',platform:data.platform,events:'enabled',autostart:'enabled',linger:linger(),tunnelHint:maskTunnel(plan.tunnelEnv.get('CONTROL_PLANE_TUNNEL_ID'))};
       }catch(e){
         // Roll back: stop what this attempt started, undo a new database binding,
         // undo new enablement while the unit file still exists, then restore files.
