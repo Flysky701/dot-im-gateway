@@ -22,7 +22,7 @@ const wxId=v=>typeof v==='string'&&/^[^\s\u0000-\u001f\u007f]{1,256}$/u.test(v);
 const sha=b=>createHash('sha256').update(b).digest('hex');
 
 export function safePrefix(raw){
-  ensure(typeof raw==='string'&&path.isAbsolute(raw)&&/^[A-Za-z0-9_./-]+$/.test(raw)&&path.resolve(raw)===raw&&raw.split('/').length>=3,'unsafe_prefix');
+  ensure(typeof raw==='string'&&path.posix.isAbsolute(raw)&&/^[A-Za-z0-9_./-]+$/.test(raw)&&path.posix.resolve(raw)===raw&&raw.split('/').length>=3,'unsafe_prefix');
   return raw;
 }
 // systemd EnvironmentFile: single quotes keep every character verbatim except '.
