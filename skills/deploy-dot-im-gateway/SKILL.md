@@ -173,7 +173,9 @@ ChatGPT 里看不到 Tunnel：Tunnel 没关联到这个 ChatGPT 工作区，或�
 | `qq_qr_app_mismatch` / `qq_qr_selection_rejected` | 手机上选错了机器人 | 重新第 5 步，选正确的机器人 |
 | `qq_token_rejected` / `qq_qr_credentials_rejected` | 机器人凭据无效或被重置 | 重新第 5 步扫码；手动方式要在 [QQ 开放平台](https://q.qq.com/) 核对 AppSecret |
 | `different_owner_requires_new_data_directory` | 想换绑另一个人或机器人 | 见「日常维护」最后一行 |
-| `unrelated_tunnel_unit_exists` | 服务器上已有别的 `dot-im-tunnel.service` | 不要覆盖；把该文件的用途告诉用户，由用户决定 |
+| `unrelated_tunnel_unit_exists` | 服务器上已有别的 `dot-im-tunnel.service`（`~/.config`、`/etc/systemd/user` 或临时 unit） | 不要覆盖；把该文件的用途告诉用户，由用户决定 |
+| `gateway_unit_not_ours` | systemd 实际加载的 `dot-im-gateway.service` 不是本安装那份（例如来自临时 unit） | 不要停止它；运行 `systemctl --user show -p FragmentPath dot-im-gateway.service`，把结果告诉用户 |
+| `systemd_user_unavailable` | 当前登录方式连不上用户级 systemd（常见于 `su` / `sudo -u` 切换用户） | 直接用该用户 SSH 登录后重试 |
 | `gateway_not_healthy` | 网关没能以 live 模式启动 | 看 `journalctl --user -u dot-im-gateway -n 50`；修复后重新第 5 步 |
 | `tunnel_not_ready` | 运行密钥权限不对、组织 ID 与 Tunnel 不匹配、Tunnel 被删除 | 看 `journalctl --user -u dot-im-tunnel -n 50`；核对第 4 步，重新第 5 步并三项都重新填写 |
 | `systemctl_failed` / `service_stop_failed` | 用户级 systemd 异常 | `systemctl --user status dot-im-gateway dot-im-tunnel`；检查 linger 后重试 |

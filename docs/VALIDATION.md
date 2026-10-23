@@ -26,4 +26,6 @@ Python 部署测试共 5 项：Windows 执行 4 项，通过后跳过 Linux 专�
 
 交叉评审修复后离线验证：`npm test` 93 项全部通过，新增覆盖：微信官方身份格式（接受 `@im.wechat`/`@im.bot`，拒绝空白/控制字符/超长）；已绑定且运行中的安装交接失败后，二进制、两个 env、config、unit 逐字节和权限一致，原已启用的 unit 不被禁用，`restore()` 重新启动原来运行的两个服务；首次交接失败时新文件全部删除、仅新 Tunnel unit 被禁用且在删除 unit 文件前执行；等待健康时取消立即回滚，已取消的信号不产生任何写入或 systemctl 调用；外部或符号链接 Tunnel unit 在 summary/prepare/commit 均被拒绝且零次 `stop`；连接器在 handing_off 或提交中被停止时不保存并报告 stopped；连接器与真实 handoff 端到端写入官方格式微信身份并报告 handed_off。用变异法逐一去掉文件恢复、启用状态判断、取消检查、新 ID 校验、提前所有权检查、停止优先和提交信号，对应测试均失败。`npm run check`、Python 14 项、`bash -n`、release.yml YAML 解析通过。
 
+第二轮评审修复后：`npm test` 97 项全部通过。新增用真实 `Store`/`Core` 模拟网关启动的场景：已绑 QQ（有待处理 QQ 消息）→ 加微信 A 时网关已把 A 写入数据库、随后 Tunnel 失败 → 回滚后 A 的绑定与游标被删除，QQ 绑定、序号、会话和消息不变 → 再绑微信 B 成功；已绑定平台重新授权失败时数据库保持网关写入的状态。来自 `/etc/systemd/user`、临时 unit、文件已删但仍在运行的同名服务，以及无法连接用户级 systemd 时，均在任何 `stop` 之前被拒绝。临时 Git 仓库验证构建记录：干净检出记录提交号，修改或暂存的跟踪文件记录 `-dirty`，未跟踪文件不影响。变异检查（去掉数据库撤销、去掉 systemd 核对、对已绑平台也回退、去掉 dirty 标记）均被对应测试发现。真实 systemd 的 `show` 输出格式按文档用样例测试，未在真实 systemd 上运行。
+
 待真人验收：详见 [ACCEPTANCE.md](ACCEPTANCE.md)。官方凭据开通、稳定身份绑定、Tunnel 鉴权转发、原 dot 订阅与执行、本人实际收到 ack/final、微信图片/PDF 收发、真实断网恢复、平台回复窗口及 systemd 常驻均需用户环境证据。

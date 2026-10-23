@@ -50,7 +50,7 @@ ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<BIN> --handoff <PREFIX> --por
 4. 页面显示「常驻服务已接管」、linger 提示和给原 dot 的订阅提示词（可一键复制）。终端输出 `{"stage":"handed_off","service":"running","events":"enabled","autostart":"enabled","linger":...}`，约 20 秒后程序自动退出。
 5. 绑定完成前失败、取消或 SSH 断开时，不写入任何文件，并恢复原来在运行的服务；重新运行即可。文件写入后服务未就绪会报 `gateway_not_healthy` 或 `tunnel_not_ready`，查看 `journalctl --user -u dot-im-gateway -u dot-im-tunnel` 修正后重新运行。
 
-规则：同一安装可以先绑 QQ 再加微信（或反过来），已有数据保留；**已绑定平台不能换成另一个人或机器人**（`different_owner_requires_new_data_directory`），需卸载后用新目录重装。已存在但不属于本安装的 `dot-im-tunnel.service` 不会被覆盖（`unrelated_tunnel_unit_exists`）。
+规则：同一安装可以先绑 QQ 再加微信（或反过来），已有数据保留；**已绑定平台不能换成另一个人或机器人**（`different_owner_requires_new_data_directory`），需卸载后用新目录重装。已存在但不属于本安装的同名服务（包括 `/etc/systemd/user` 或临时 unit，以 systemd 实际加载的文件为准）不会被停止或覆盖（`unrelated_tunnel_unit_exists` / `gateway_unit_not_ours`）。交接失败或取消会完整撤销：文件、unit 状态，以及网关为新加平台写入数据库的绑定和同步进度（已收到的消息保留），因此失败后可以换另一个账号重新绑定。
 
 ## 当前边界
 

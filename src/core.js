@@ -1,4 +1,8 @@
 import {hash,canonical,ensure,Fault,exact,str} from './util.js';
+// Meta rows owned by one platform binding: the owner/bot record and that platform's
+// sync state. A failed handoff restores exactly these for a platform it added.
+export const bindingKeys=p=>['binding.'+p,...(p==='qq'?['qq.session','qq.seq']:['weixin.cursor'])];
+export const bindingValue=(config,p)=>hash(canonical([config.principal,p,config[p].ownerId,config[p][p==='qq'?'appId':'botId']]));
 export class Core {
   constructor(store,config,media,adapters,clock=Date.now){
     Object.assign(this,{store,config,media,adapters,clock});this.busy=false;
@@ -12,9 +16,9 @@ export class Core {
       ensure([[q,w],[blank,w],[q,blank],[blank,blank]].some(([a,b])=>legacy===hash(canonical([config.principal,...a,...b]))),'binding_changed_new_data_directory_required');
       store.run("DELETE FROM meta WHERE k='binding'");
     }
-    for(const [p,bot] of [['qq','appId'],['weixin','botId']]){
+    for(const p of ['qq','weixin']){
       if(!config[p].ownerId)continue;
-      const value=hash(canonical([config.principal,p,config[p].ownerId,config[p][bot]])),old=store.get('binding.'+p);
+      const value=bindingValue(config,p),old=store.get('binding.'+p);
       ensure(!old||old===value,'binding_changed_new_data_directory_required');store.set('binding.'+p,value);
     }
   }

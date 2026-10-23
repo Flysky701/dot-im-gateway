@@ -7,6 +7,7 @@ import {gzipSync} from 'node:zlib';
 import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import postject from 'postject';
+import {sourceRevision} from '../scripts/source-revision.js';
 const root=fileURLToPath(new URL('..',import.meta.url)),pkg=path.join(root,'packaging');
 if(process.versions.node!=='24.21.0'||process.arch!=='x64'||!['win32','linux'].includes(process.platform))throw new Error('fixed_build_runtime_required');
 const work=path.join(pkg,'work',process.platform),cache=path.join(pkg,'cache',process.platform),dist=path.join(root,'dist');
@@ -18,7 +19,7 @@ await build({entryPoints:[path.join(pkg,'browser.js')],bundle:true,platform:'bro
 await build({entryPoints:[path.join(pkg,'qq-worker.js')],bundle:true,platform:'node',format:'cjs',target:'node24',outfile:path.join(work,'qq-worker.cjs'),logLevel:'warning'});
 const binary=fs.readFileSync(path.join(cache,process.platform==='win32'?'tunnel-client.exe':'tunnel-client'));
 fs.writeFileSync(path.join(work,'tunnel.gz'),gzipSync(binary,{level:9}));
-const source=spawnSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).stdout.trim();
+const source=sourceRevision(root);
 const manifest={platform:process.platform,arch:process.arch,node:process.versions.node,tunnelVersion:'0.0.17',tunnelSha256:hash(binary),sourceCommit:source};
 fs.writeFileSync(path.join(work,'manifest.json'),JSON.stringify(manifest));
 const notices=['LICENSE','THIRD_PARTY_NOTICES.md','licenses/qrcode-generator-MIT.txt'].map(x=>fs.readFileSync(path.join(root,x),'utf8'));

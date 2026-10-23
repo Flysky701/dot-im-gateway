@@ -6,7 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {randomBytes,createHash} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
 import {validate} from './config.js';
+import {bindingKeys,bindingValue} from './core.js';
 import {ensure,Fault} from './util.js';
 
 export const DEFAULT_CALLBACK_HOSTS=['chatgpt.com','.chatgpt.com','openai.com','.openai.com'];
@@ -92,10 +94,49 @@ function writePrivate(file,data,mode=0o600){
   fs.writeFileSync(tmp,data,{mode,flag:'wx'});fs.chmodSync(tmp,mode);fs.renameSync(tmp,file);
 }
 const defaultSystemctl=(...args)=>spawnSync('systemctl',['--user',...args],{stdio:'ignore',timeout:90000}).status;
+// What systemd actually loaded for a unit name: ~/.config, /etc/systemd/user, a
+// transient unit or nothing. null when the user manager cannot be asked.
+function defaultUnitInfo(unit){
+  const r=spawnSync('systemctl',['--user','show','--property=FragmentPath,LoadState,ActiveState',unit],{encoding:'utf8',timeout:30000});
+  return r.status===0?parseUnitShow(r.stdout):null;
+}
+export function parseUnitShow(text){
+  const m=new Map(String(text).split('\n').filter(l=>l.includes('=')).map(l=>[l.slice(0,l.indexOf('=')),l.slice(l.indexOf('=')+1).trim()]));
+  return {fragment:m.get('FragmentPath')||'',load:m.get('LoadState')||'',active:m.get('ActiveState')||''};
+}
+const sameFile=(a,b)=>{try{const x=fs.statSync(a),y=fs.statSync(b);return x.dev===y.dev&&x.ino===y.ino;}catch{return false;}};
+// Only the meta rows of a platform this attempt adds are read or restored; messages,
+// replies and the other platform stay exactly as the gateway left them.
+function openMeta(dataDir){
+  const f=path.join(dataDir,'gateway.sqlite');if(!fs.existsSync(f))return null;
+  ensure(!fs.lstatSync(f).isSymbolicLink(),'unsafe_database');
+  const db=new DatabaseSync(f);db.exec('PRAGMA busy_timeout=5000');return db;
+}
+const hasMeta=db=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'").get());
+function readMeta(dataDir,keys){
+  const out=new Map();if(!keys.length)return out;const db=openMeta(dataDir);if(!db)return out;
+  try{if(hasMeta(db))for(const k of keys){const r=db.prepare('SELECT v FROM meta WHERE k=?').get(k);if(r)out.set(k,r.v);}}finally{db.close();}
+  return out;
+}
+function restoreMeta(dataDir,keys,before,created){
+  if(!keys.length)return;const db=openMeta(dataDir);if(!db)return;
+  try{
+    if(!hasMeta(db))return;db.exec('BEGIN IMMEDIATE');
+    try{
+      for(const k of keys){
+        if(before.has(k))db.prepare('INSERT INTO meta VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').run(k,before.get(k));
+        // A binding is removed only if it is exactly the one this attempt created.
+        else if(created.has(k))db.prepare('DELETE FROM meta WHERE k=? AND v=?').run(k,created.get(k));
+        else db.prepare('DELETE FROM meta WHERE k=?').run(k);
+      }
+      db.exec('COMMIT');
+    }catch(e){db.exec('ROLLBACK');throw e;}
+  }finally{db.close();}
+}
 async function defaultProbe(url){try{const r=await fetch(url,{signal:AbortSignal.timeout(1500)});const body=await r.text();return {status:r.status,body};}catch{return {status:0,body:''};}}
 function defaultLinger(){const r=spawnSync('loginctl',['show-user',os.userInfo().username,'--property=Linger','--value'],{encoding:'utf8',timeout:10000});return r.status===0?r.stdout.trim()==='yes':null;}
 
-export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=defaultSystemctl,probe=defaultProbe,linger=defaultLinger,random,deadlineMs=45000,pause=ms=>new Promise(r=>setTimeout(r,ms))}){
+export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=defaultSystemctl,unitInfo=defaultUnitInfo,probe=defaultProbe,linger=defaultLinger,random,deadlineMs=45000,pause=ms=>new Promise(r=>setTimeout(r,ms))}){
   safePrefix(prefix);
   const file=name=>path.join(prefix,name),unitDir=path.join(home,'.config/systemd/user'),unitPath=path.join(unitDir,TUNNEL_UNIT);
   const read=name=>fs.existsSync(file(name))?fs.readFileSync(file(name),'utf8'):'';
@@ -108,6 +149,12 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
     ensure(fs.existsSync(gatewayUnit)&&fs.readFileSync(gatewayUnit,'utf8').split('\n').includes(`WorkingDirectory=${prefix}/current`),'gateway_unit_missing');
     const tunnelStat=fs.lstatSync(unitPath,{throwIfNoEntry:false});
     if(tunnelStat)ensure(!tunnelStat.isSymbolicLink()&&fs.readFileSync(unitPath,'utf8').startsWith(`# Managed by dot-im-gateway handoff for prefix=${prefix}\n`),'unrelated_tunnel_unit_exists');
+    // The file check alone misses same-named units from /etc/systemd/user or
+    // systemd-run: ask systemd which file it really loaded before stopping anything.
+    for(const [unit,own,code] of [[GATEWAY_UNIT,gatewayUnit,'gateway_unit_not_ours'],[TUNNEL_UNIT,tunnelStat?unitPath:'','unrelated_tunnel_unit_exists']]){
+      const s=unitInfo(unit);ensure(s,'systemd_user_unavailable');
+      ensure(s.fragment?Boolean(own)&&sameFile(s.fragment,own):s.load==='not-found'&&s.active==='inactive',code);
+    }
     return JSON.parse(read('config.json'));
   };
   let stopped=[],committed=false;
@@ -135,6 +182,11 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
       const client=file('bin/tunnel-client'),targets=[client,file('runtime.env'),file('tunnel-runtime.env'),file('config.json'),unitPath];
       const backup=targets.map(f=>[f,fs.existsSync(f)?{data:fs.readFileSync(f),mode:fs.statSync(f).mode&0o777}:null]);
       const wasEnabled=Object.fromEntries([GATEWAY_UNIT,TUNNEL_UNIT].map(u=>[u,fs.existsSync(path.join(unitDir,u))&&systemctl('is-enabled','--quiet',u)===0]));
+      // The gateway records a new platform binding in its database on start. If this
+      // attempt adds a platform, remember that platform's rows to undo them exactly.
+      const dataDir=path.resolve(prefix,raw.dataDir),added=['qq','weixin'].filter(p=>!raw[p]?.ownerId&&plan.config[p].ownerId);
+      const metaKeys=added.flatMap(bindingKeys),created=new Map(added.map(p=>['binding.'+p,bindingValue(plan.config,p)]));
+      let metaBefore;try{metaBefore=readMeta(dataDir,metaKeys);}catch(e){throw e instanceof Fault?e:new Fault('database_unreadable');}
       try{
         // Files first, then systemd. Secrets are only ever written with 0600.
         fs.mkdirSync(file('bin'),{recursive:true,mode:0o700});
@@ -155,9 +207,12 @@ export function createHandoff({prefix,tunnelBinary,home=os.homedir(),systemctl=d
         committed=true;
         return {service:'running',platform:data.platform,events:'enabled',autostart:'enabled',linger:linger()};
       }catch(e){
-        // Roll back: stop what this attempt started, undo new enablement while the
-        // unit file still exists, then restore every file byte-for-byte.
+        // Roll back: stop what this attempt started, undo a new database binding,
+        // undo new enablement while the unit file still exists, then restore files.
         for(const unit of [TUNNEL_UNIT,GATEWAY_UNIT])systemctl('stop',unit);
+        // With the gateway stopped, forget a binding this attempt added (and its sync
+        // state) so another account can be bound next time. Messages are kept.
+        try{restoreMeta(dataDir,metaKeys,metaBefore,created);}catch{}
         for(const unit of [TUNNEL_UNIT,GATEWAY_UNIT])if(!wasEnabled[unit]&&fs.existsSync(path.join(unitDir,unit)))systemctl('disable',unit);
         for(const [f,b] of backup){try{if(b)writePrivate(f,b.data,b.mode);else fs.rmSync(f,{force:true});}catch{}}
         systemctl('daemon-reload');

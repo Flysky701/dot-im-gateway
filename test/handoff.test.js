@@ -6,9 +6,12 @@ import path from 'node:path';
 import {setImmediate as next} from 'node:timers/promises';
 import {example} from '../src/config.js';
 import {hostAllowed,safeURL} from '../src/network.js';
-import {planHandoff,envText,parseEnv,tunnelUnit,createHandoff,safePrefix,DEFAULT_CALLBACK_HOSTS} from '../src/handoff.js';
+import {planHandoff,envText,parseEnv,tunnelUnit,createHandoff,safePrefix,parseUnitShow,DEFAULT_CALLBACK_HOSTS} from '../src/handoff.js';
 import {Connector,connectionInput} from '../src/connector.js';
 import {Fault} from '../src/util.js';
+import {Store} from '../src/store.js';
+import {Core} from '../src/core.js';
+import {readConfig} from '../src/config.js';
 
 const tunnel={tunnelId:'tunnel_synthetic',organizationId:'org-synthetic',runtimeKey:'synthetic-tunnel-key-only'};
 const qq={platform:'qq',...tunnel,qq:{appId:'qq-app',secret:'synthetic-qq-secret-only',ownerId:'qq-owner-stable'}};
@@ -95,9 +98,12 @@ function installation(t,{tunnelEnv=''}={}){
     if(args[0]==='enable')enabled.add(unit);if(args[0]==='disable')enabled.delete(unit);return 0;};
   const probes=[];
   const probe=async url=>{probes.push(url);return url.endsWith('/healthz')?{status:200,body:JSON.stringify({ok:true,mode:'live'})}:{status:200,body:'ok'};};
-  const make=extra=>createHandoff({prefix,home,tunnelBinary:Buffer.from('#!/bin/sh\n'),systemctl,probe,linger:()=>false,random:()=>'t'.repeat(64),pause:async()=>{},deadlineMs:1000,...extra});
-  const unitPath=path.join(home,'.config/systemd/user/dot-im-tunnel.service');
-  return {root,home,prefix,unitPath,calls,active,enabled,probes,systemctl,make};
+  // What systemd loaded: the file in ~/.config, or a same-named unit from elsewhere.
+  const unitDir=path.join(home,'.config/systemd/user'),loadedElsewhere=new Map();
+  const unitInfo=unit=>{const f=path.join(unitDir,unit),fragment=loadedElsewhere.get(unit)??(fs.existsSync(f)?f:'');return {fragment,load:fragment?'loaded':'not-found',active:active.has(unit)?'active':'inactive'};};
+  const make=extra=>createHandoff({prefix,home,tunnelBinary:Buffer.from('#!/bin/sh\n'),systemctl,unitInfo,probe,linger:()=>false,random:()=>'t'.repeat(64),pause:async()=>{},deadlineMs:1000,...extra});
+  const unitPath=path.join(unitDir,'dot-im-tunnel.service');
+  return {root,home,prefix,unitPath,calls,active,enabled,probes,systemctl,unitInfo,loadedElsewhere,make};
 }
 const mode=f=>fs.statSync(f).mode&0o777;
 const NOT_READY=async url=>url.endsWith('/healthz')?{status:200,body:'{"mode":"live"}'}:{status:503,body:''};
@@ -166,6 +172,73 @@ test('a Tunnel unit of another program is never stopped, overwritten or followed
   assert.equal(fs.existsSync(path.join(s.prefix,'runtime.env')),false);
   // The connector refuses to start at all, so the page never offers a binding.
   assert.throws(()=>new Connector({dataDir:'synthetic',handoff:s.make()}),/unrelated_tunnel_unit_exists/);
+});
+
+test('same-named units that systemd loads from elsewhere are never stopped',{skip:process.platform==='win32'},async t=>{
+  const s=installation(t);
+  const cases=[['dot-im-tunnel.service','/etc/systemd/user/dot-im-tunnel.service',/unrelated_tunnel_unit_exists/],
+    ['dot-im-tunnel.service','/run/user/1000/systemd/transient/dot-im-tunnel.service',/unrelated_tunnel_unit_exists/],
+    ['dot-im-gateway.service','/run/user/1000/systemd/transient/dot-im-gateway.service',/gateway_unit_not_ours/]];
+  for(const [unit,fragment,code] of cases){
+    s.loadedElsewhere.clear();s.loadedElsewhere.set(unit,fragment);s.active.add(unit);const h=s.make();
+    assert.throws(()=>h.summary(),code,fragment);await assert.rejects(h.prepare(),code);await assert.rejects(h.commit(qq),code);
+  }
+  // Running although its file is gone (not-found but active): ownership is unknown.
+  s.loadedElsewhere.clear();s.active.add('dot-im-tunnel.service');
+  const gone=s.make({unitInfo:u=>u==='dot-im-tunnel.service'?{fragment:'',load:'not-found',active:'active'}:s.unitInfo(u)});
+  await assert.rejects(gone.prepare(),/unrelated_tunnel_unit_exists/);
+  await assert.rejects(s.make({unitInfo:()=>null}).prepare(),/systemd_user_unavailable/);
+  assert.deepEqual(s.calls.filter(c=>!c.startsWith('is-')),[],'nothing was stopped, enabled or written');
+  assert.equal(fs.existsSync(path.join(s.prefix,'runtime.env')),false);
+});
+
+test('systemctl show output is read by key, including units systemd does not know',()=>{
+  assert.deepEqual(parseUnitShow('FragmentPath=/home/u/.config/systemd/user/dot-im-tunnel.service\nLoadState=loaded\nActiveState=active\n'),{fragment:'/home/u/.config/systemd/user/dot-im-tunnel.service',load:'loaded',active:'active'});
+  assert.deepEqual(parseUnitShow('LoadState=not-found\nActiveState=inactive\nFragmentPath=\n'),{fragment:'',load:'not-found',active:'inactive'});
+  assert.deepEqual(parseUnitShow('ActiveState=active\nLoadState=loaded\nFragmentPath=/run/user/1000/systemd/transient/dot-im-tunnel.service'),{fragment:'/run/user/1000/systemd/transient/dot-im-tunnel.service',load:'loaded',active:'active'});
+});
+
+// A gateway start as systemd would run it: Core records each bound platform in the
+// database, the adapters write their sync state, and a changed owner refuses to start.
+function liveGateway(s){
+  let up=false,starts=0;
+  const systemctl=(...a)=>{const r=s.systemctl(...a);
+    if(a[0]==='restart'&&a.at(-1)==='dot-im-gateway.service'){
+      const c=readConfig(path.join(s.prefix,'config.json')),store=new Store(c.dataDir);starts++;
+      try{new Core(store,c);up=true;if(c.weixin.ownerId)store.set('weixin.cursor',`cursor-of-${c.weixin.botId}-${starts}`);if(c.qq.ownerId&&!store.get('qq.session'))store.set('qq.session','qq-session');}
+      catch(e){up=false;s.startError=e.code;}finally{store.close();}
+    }
+    if(a[0]==='stop'&&a.at(-1)==='dot-im-gateway.service')up=false;return r;};
+  const probe=ready=>async url=>url.endsWith('/healthz')?(up?{status:200,body:'{"mode":"live"}'}:{status:0,body:''}):{status:ready?200:503,body:''};
+  return {systemctl,probe,get starts(){return starts;}};
+}
+const meta=(s,k)=>{const c=readConfig(path.join(s.prefix,'config.json')),store=new Store(c.dataDir);try{return store.get(k);}finally{store.close();}};
+
+test('a failed handoff that added Weixin A forgets A in the database, so Weixin B can bind',{skip:process.platform==='win32'},async t=>{
+  const s=installation(t),g=liveGateway(s);
+  // 1. QQ is bound and working; a QQ message is waiting.
+  let h=s.make({systemctl:g.systemctl,probe:g.probe(true)});await h.prepare();await h.commit(qq);
+  const c=readConfig(path.join(s.prefix,'config.json'));let store=new Store(c.dataDir);
+  store.checkpoint('qq',[{key:'qq-msg-1',raw:{text:'hello'}}],'qq.seq','7');const qqBinding=store.get('binding.qq');store.close();
+  // 2. Adding Weixin A: the gateway starts with A (and records it), then the Tunnel fails.
+  const A={...wx,weixin:{...wx.weixin,ownerId:'oAAAsynthetic@im.wechat',botId:'aaasynthetic@im.bot'}};
+  h=s.make({systemctl:g.systemctl,probe:g.probe(false),deadlineMs:1});await h.prepare();
+  await assert.rejects(h.commit(A),/tunnel_not_ready/);await h.restore();
+  assert.equal(meta(s,'binding.weixin'),undefined,'temporary Weixin binding removed');
+  assert.equal(meta(s,'weixin.cursor'),undefined,"A's sync cursor removed");
+  assert.equal(meta(s,'binding.qq'),qqBinding);assert.equal(meta(s,'qq.seq'),'7');assert.equal(meta(s,'qq.session'),'qq-session');
+  store=new Store(c.dataDir);assert.equal(store.one("SELECT COUNT(*) n FROM inbox WHERE platform='qq'").n,1,'messages are kept');store.close();
+  // 3. Binding Weixin B now succeeds instead of binding_changed_new_data_directory_required.
+  const B={platform:'weixin',weixin:{...wx.weixin,ownerId:'oBBBsynthetic@im.wechat',botId:'bbbsynthetic@im.bot'}};
+  h=s.make({systemctl:g.systemctl,probe:g.probe(true)});await h.prepare();
+  assert.equal((await h.commit(B)).service,'running');assert.equal(s.startError,undefined);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(s.prefix,'config.json'),'utf8')).weixin.ownerId,'oBBBsynthetic@im.wechat');
+  assert.equal(meta(s,'weixin.cursor'),`cursor-of-bbbsynthetic@im.bot-${g.starts}`);assert.equal(meta(s,'binding.qq'),qqBinding);
+  // 4. A failed re-authorisation of an already bound platform leaves its database
+  // rows as the gateway left them (binding kept, sync progress not rewound).
+  h=s.make({systemctl:g.systemctl,probe:g.probe(false),deadlineMs:1});await h.prepare();
+  const kept=meta(s,'binding.weixin');await assert.rejects(h.commit(B),/tunnel_not_ready/);await h.restore();
+  assert.equal(meta(s,'binding.weixin'),kept);assert.equal(meta(s,'weixin.cursor'),`cursor-of-bbbsynthetic@im.bot-${g.starts}`);
 });
 
 test('a failed handoff on a running, bound service restores every file, mode and unit state',{skip:process.platform==='win32'},async t=>{

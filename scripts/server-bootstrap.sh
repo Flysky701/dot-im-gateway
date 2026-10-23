@@ -62,7 +62,8 @@ COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 BIN="$TOOLS/dot-im-connect-linux-x64"
 URL="https://github.com/${REPO}/releases/download/v${VERSION}/dot-im-connect-linux-x64"
 # The connector must come from exactly the same source commit as the service:
-# a Release binary is used only when its build record names this commit.
+# a Release binary is used only when its build record names this commit. Builds from
+# modified files are recorded as "<commit>-dirty" and therefore never match.
 built_from(){ node -e 'const m=require(process.argv[1]);process.stdout.write(String(m.sourceCommit||"")+" "+String(m.executableSha256||""))' "$1" 2>/dev/null || true; }
 sha(){ sha256sum "$1" | cut -d' ' -f1; }
 rm -f "$BIN.next" "$BIN.next.sha256" "$BIN.next.build.json"
