@@ -14,6 +14,20 @@
 | `reconcile --id REPLY_ID --decision cancelled` | 人工确认取消；不会重发，若取消 ack 则 final 仍被阻止 |
 | `upgrade / rollback / uninstall` | 调用确定性部署脚本，默认只展示计划 |
 
+## 常驻服务日常（handoff 安装）
+
+| 需求 | 命令 / 做法 |
+|---|---|
+| 一键状态 | `bash scripts/server-status.sh`：一行 JSON，`ok=true` 表示两个服务 active、网关 live、tunnel-client 就绪；含已启用平台、订阅开关、linger 和队列计数，不含秘密 |
+| 日志 | `journalctl --user -u dot-im-gateway -u dot-im-tunnel -n 100 --no-pager` |
+| 重新扫码 / 凭据失效 / 换 Tunnel 密钥 | 重新运行 `<BIN> --handoff <PREFIX>`。Tunnel 三项留空沿用已保存值，三项都填则替换；网关令牌保持不变 |
+| 再加一个平台 | 重新运行 handoff 选另一个平台；已有平台和数据保留，原 dot 再订阅该平台 |
+| 换绑另一个人或机器人 | 拒绝（`different_owner_requires_new_data_directory`）。卸载后用新 `PREFIX` 重新 bootstrap |
+| 升级 | 检出新的已审阅提交后重跑 `bash scripts/server-bootstrap.sh`：已绑定时走 `deploy.py upgrade --apply`（停服务、备份、切换、启动），未绑定时走 install |
+| 服务停着没起来 | `systemctl --user start dot-im-gateway dot-im-tunnel`；handoff 中途断开时程序会恢复原先在运行的服务 |
+
+`dot-im-tunnel.service` 由 handoff 生成，首行带 `# Managed by dot-im-gateway handoff for prefix=...` 标记，`Restart=always`，从 `prefix/tunnel-runtime.env` 读取 Tunnel 运行密钥和转发给网关的 Authorization 头；`dot-im-gateway.service` 为 `Restart=on-failure`。两者都 enable 到 `default.target`，开机自启需要 linger。`deploy.py uninstall` 只移除带本 prefix 标记的 tunnel unit。
+
 ## 故障处理
 
 `pending` 长时间不动：检查服务、模式、原 dot 是否已订阅/收到事件、是否调用 reply、ack 是否阻塞 final、原消息期限和平台授权。`events=accepted` 只表示 ChatGPT callback 接受，不能证明 dot 已处理。`replies=accepted` 只表示平台接口接受，需真人确认聊天可见。
@@ -26,7 +40,7 @@
 
 ## 备份和恢复
 
-先停止 gateway 服务，保留 tunnel 服务也不能调用已停止网关。backup 内包含私信、context 和签名密钥，目录必须私有，建议放在可信加密备份介质。
+先停止 gateway 服务（tunnel 服务可以继续运行，但停机期间工具调用会失败）。backup 内包含私信、context 和签名密钥，目录必须私有，建议放在可信加密备份介质。
 
 ```sh
 systemctl --user stop dot-im-gateway.service
@@ -47,4 +61,4 @@ node /prefix/current/bin/gateway.js rollback --prefix /prefix --apply
 node /prefix/current/bin/gateway.js uninstall --prefix /prefix --apply
 ```
 
-回滚仅切换同 `0.1.x`/schema 1 的上一个代码 release，不倒退数据库；跨 schema 迁移需新版本专门方案。卸载停止/disable 本服务、移除本项目 unit/current 链接，**保留 data、config、runtime.env、releases、backups**，不删除官方 tunnel-client 或其他服务。若要撤销外部授权，应由用户另行在原 dot、Tunnel 和平台完成；卸载本地服务不是外部凭据撤销。
+回滚仅切换同 `0.1.x`/schema 1 的上一个代码 release，不倒退数据库；跨 schema 迁移需新版本专门方案。0.1.1 起身份绑定按平台分别记录（`binding.qq` / `binding.weixin`），首次启动自动迁移 0.1.0 的合并记录；回滚到 0.1.0 后旧代码会重新写入合并记录，再次升级时再迁移。卸载停止/disable 本服务和带本 prefix 标记的 `dot-im-tunnel.service`，移除这些 unit 和 current 链接，**保留 data、config、runtime.env、tunnel-runtime.env、bin/tunnel-client、releases、backups**，不删除其他服务。若要撤销外部授权，应由用户另行在原 dot、Tunnel 和平台完成；卸载本地服务不是外部凭据撤销。

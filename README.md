@@ -2,31 +2,60 @@
 
 让**同一个已有 OpenAI dot** 接收 QQ / 微信本人私聊任务，并向原渠道回复。网关负责身份、消息、队列和媒体，不执行任务，不创建 Agent，不调用模型 API，不访问未公开的 dot 内部接口。
 
-默认使用小型[单文件连接程序](docs/PORTABLE.md)：Windows / Linux x64 分别打包，用户不用安装 Node、Python 或 npm。选 QQ 或微信，完成本人绑定后关闭配置页面，消息传输进程继续运行；断开后重新运行。没有管理后台、自动修复、自启或凭据保存。源码仍模块化，旧 Linux / SQLite / systemd 服务方式保留，但不作为默认连接流程。
+## 两种用法
 
-单文件入口已通过本地离线验证，新的包装入口尚待真人验收；下述已通过的真人验收来自此前受限测试程序。便携入口每次一个渠道、四个文字工具，不开放附件或 Events。
+| | 服务器常驻（推荐） | Windows 一次性 |
+|---|---|---|
+| 适合 | 有一台能 SSH 登录的 Linux x64 服务器 | 只有一台 Windows 电脑，临时用 |
+| 在线 | 7×24；崩溃自动重启、断网自动重连、开机自启 | 窗口开着才在线；睡眠、关机或关窗口即断开 |
+| 来消息 | 通过 MCP Events **自动叫醒** dot | 需要你主动让 dot 去查看 |
+| 凭据 | 保存在服务器上仅本用户可读的文件（0600） | 只在内存，关闭即清理 |
+| 绑定 | 单文件程序 `--handoff`：扫码绑定一次，结果移交常驻服务 | 单文件程序直接连接 |
 
-**验收状态：2026-10-22 原 dot 经私人 Tunnel 完成 QQ、微信本人文字的手动 ack/final 往返，用户分别确认客户端实收。** [脱敏验收记录](docs/TEXT_ACCEPTANCE_2026-10-22.md)。Events 自动触发、微信媒体真人收发、常驻及真实故障恢复仍待独立验收。默认 `mode=offline`，平台关闭，订阅门关闭。安装不扫码、不生成账号凭据、不创建 Tunnel、不创建真实订阅。
+[单文件连接程序](docs/PORTABLE.md)只是**一次性入口**（扫码、确认本人、填 Tunnel），用户不用装 Node、Python 或 npm；**常驻服务**（SQLite + systemd 用户服务 + 官方 tunnel-client）负责长期运行。两者共用同一套源码模块。
 
-## 从零连接 / 交给 Agent
+## 交给 Agent 一句话搞定
 
-默认不需要服务器：运行 Windows EXE → 选 QQ 或微信 → 按缺项打开官方账号/Tunnel 页面 → 在本机安全输入 → 本人确认绑定 → 原 dot 读写一条文字并在手机确认。QQ 默认使用已集成的腾讯官方 SDK 扫码，手填凭据为备用；微信直接使用官方扫码，不需要微信 AppID/AppSecret。QQ 扫码需本人选择并确认要复用的官方机器人；新扫码入口仍待真人验收。连接页关闭后，传输程序仍需运行，电脑休眠或程序退出后不会继续在线。具体见[单文件使用说明](docs/PORTABLE.md)。
-
-可直接复制下面任一句给 Agent，不必另装 Skill 包。**仓库是私有的，Agent 必须已有访问权限；无法访问时需提供授权或文件，不会自动公开仓库。** Agent 按实际工具能力操作，不能自动完成的登录、扫码或确认步骤再交给本人。
-
-全流程辅助：
-
-```text
-请下载并使用这个全流程辅助 Skill：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/connect-dot-im-gateway/SKILL.md ，帮我把 QQ 或微信连接到已有的 dot，优先本机免服务器方案。遇到需要登录、扫码或授权时再叫我。
-```
-
-已有服务器：
+把下面一句发给能操作终端的 Agent（例如 Codex），不用另装 Skill 包。Agent 会自己选路线、下载、安装、排错和验收；只有登录、创建密钥、手机扫码、在 ChatGPT 添加插件时才叫你。
 
 ```text
-请下载并使用这个服务端部署 Skill：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/deploy-dot-im-gateway/SKILL.md ，用我已有的服务器连接配置，在我确认的目标上部署。遇到需要登录、扫码或授权时再叫我。
+请按这个 Skill 帮我把 QQ 或微信接到我已有的 dot，全程你来操作，需要我登录、扫码或粘贴时再叫我：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/connect-dot-im-gateway/SKILL.md
 ```
 
-服务器是可选运行位置；默认前台连接程序不会自动变成脱离终端的常驻服务。如另需常开部署，复用既有部署脚本，在具体确认后配置凭据和进程启动方式。当前不自动开通 Events 来信唤醒。
+已确定用服务器：
+
+```text
+请按这个 Skill 在我的服务器 <SSH 别名> 上部署 dot-im-gateway 并连接 QQ/微信，全程你来操作，需要我登录、扫码或粘贴时再叫我：https://github.com/Flysky701/dot-im-gateway/blob/main/skills/deploy-dot-im-gateway/SKILL.md
+```
+
+需要你亲自做的只有：登录 OpenAI Platform，创建/选择 Tunnel 和只带 Tunnels Read+Use 的运行密钥（粘贴到本机连接页，不发聊天）；手机扫码；在 [ChatGPT Plugins](https://chatgpt.com/plugins) 添加 Connection 为 Tunnel 的插件，并把连接页给出的订阅提示词发给原 dot；发一条消息确认收到回复。
+
+## 自己动手（服务器）
+
+```sh
+git clone https://github.com/Flysky701/dot-im-gateway && cd dot-im-gateway
+bash scripts/server-bootstrap.sh       # 装固定版本 Node、常驻服务和单文件程序；不接触任何账号凭据
+sudo loginctl enable-linger "$USER"    # 可选但推荐：退出登录后、开机后仍运行
+# 在自己电脑上（把 <next> 换成上一步输出 JSON 里的 next 命令）：
+ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<next>'
+```
+
+打开终端里显示的链接 → 选平台、填 Tunnel 三项、手机扫码 → 页面显示「常驻服务已接管」并给出订阅提示词。之后用 `bash scripts/server-status.sh` 查看状态（一行 JSON，`"ok": true` 即正常）。详见 [部署手册](docs/DEPLOYMENT.md)。
+
+## 出问题怎么办
+
+| 情况 | 系统会怎样 | 你要做什么 |
+|---|---|---|
+| 断网，QQ / 微信 / Tunnel 暂时不可用 | 常驻服务自动退避重连 | 无 |
+| 服务崩溃 | systemd 自动重启 | 无 |
+| 服务器重启 | 开机自启（需已开启 linger） | 无 |
+| 凭据失效、机器人重置、微信登录过期 | 记录错误类别，该平台停止收发 | 让 Agent 重新运行 handoff 扫码；Tunnel 三项留空即沿用 |
+| 想再加一个平台 | — | 再运行一次 handoff，选另一个平台 |
+| 想换绑另一个人或机器人 | 同一数据目录拒绝换人，防止消息发错人 | 卸载后用新目录重装 |
+| 回复显示 `uncertain` | 不自动重发 | 核对聊天记录后用 `reconcile` 处理，见 [运维手册](docs/OPERATIONS.md) |
+| Windows 一次性模式断开 | — | 重新运行程序 |
+
+**验收状态：2026-10-22 原 dot 经私人 Tunnel 完成 QQ、微信本人文字的手动 ack/final 往返，用户分别确认客户端实收。** [脱敏验收记录](docs/TEXT_ACCEPTANCE_2026-10-22.md)。该结果来自此前受限测试程序；单文件入口、`--handoff` 移交常驻服务、Events 自动唤醒、微信媒体真人收发和真实故障恢复已通过离线/合成测试，仍待真人验收。新安装默认 `mode=offline`、平台关闭、订阅门关闭；handoff 成功后才切到 live 并开启订阅。
 
 ## 消息路径（模块化服务；便携入口关闭 Events）
 
@@ -105,7 +134,8 @@ ack 被明确拒绝或取消时，其排队 final 会取消；ack 为 uncertain 
 
 - `config init`、`doctor`、`status`、`logs`、`backup`、`restore`、`reconcile`、`upgrade`、`rollback`、`uninstall`：见 [运维手册](docs/OPERATIONS.md)。
 - 可重复部署与升级脚本：`python3 scripts/deploy.py --help`，默认只输出计划；卸载保留数据、配置、凭据、备份和历史版本。
-- 模块化服务方式单独下载安装官方 tunnel-client；便携文件内置经过校验的官方客户端，解包后作为独立子进程运行，不改写它的控制协议。
+- 官方 tunnel-client 内置在单文件程序中（SHA256 校验）。一次性模式作为子进程运行；`--handoff` 时安装到 `prefix/bin/tunnel-client`，由 `dot-im-tunnel.service` 常驻运行，不改写它的控制协议。
+- 发布：推送 `v*` 标签后，[release 工作流](.github/workflows/release.yml) 在干净环境测试、构建 Windows / Linux 单文件并附上 `.sha256`，生成**草稿** Release，由维护者审核后发布。单文件内含标注为 UNLICENSED 的腾讯 QQ SDK，公开发布二进制前请先确认再分发许可，见[第三方声明](THIRD_PARTY_NOTICES.md)。
 - 上游固定版本、许可证与借鉴内容：[第三方声明](THIRD_PARTY_NOTICES.md)、[参考审查](docs/UPSTREAM.md)、`references.lock.json`。
 - 本地及 CI 证据：[验证记录](docs/VALIDATION.md)。下一阶段逐项完成 [用户环境验收清单](docs/ACCEPTANCE.md)。
 

@@ -1,21 +1,70 @@
 ---
 name: connect-dot-im-gateway
-description: Help a user connect their own QQ or Weixin private messages to an existing OpenAI dot from scratch, preferably with the local single-file connector. Inspect available computer/browser/account access, guide missing official prerequisites and safe owner binding, and reuse the server deployment Skill only when the user chooses a server.
+description: One-sentence, fully automated entry for beginners to connect their own QQ or Weixin private chat to an existing OpenAI dot. With a Linux server it hands off to deploy-dot-im-gateway (24x7, auto-reconnect, events wake the dot); without one it runs the one-time Windows single-file connector. The human only logs in, creates the Tunnel key, scans QR codes and adds the plugin/subscription in ChatGPT.
 ---
 
-Use the small connection program in [the portable guide](../../docs/PORTABLE.md). Default to the user's own Windows x64 computer; no server or separate Node/Python installation is required. The setup page closes after connection, while the bridge and official tunnel-client keep running. All processes stopped means disconnected. Do not turn this into a dashboard or managed service.
+# 一句话接入：把我的 QQ / 微信私聊连到已有的 dot
 
-Read this Skill and referenced repository files using authorized access to `https://github.com/Flysky701/dot-im-gateway`, then pin the source commit. The repository is private. If access is unavailable, ask for authorized access or user-provided files, without changing visibility or creating broad credentials. No Skill package or installation manager is needed.
+用户是完全的新手。**你（Agent）负责全部技术操作**：判断路线、下载、校验、运行、排错、验收。不要让用户读文档、改文件或自己拼命令。只有下面这些必须由本人完成，你每次只交给用户一件，用一句中文说明要做什么、做完回复什么：
 
-1. Inspect actual available tools, OS/architecture, browser capabilities and current project processes. Do not assume every dot has Chrome access, shell access or permission to read account pages. Reuse an existing suitable connection. If an individual step cannot be automated, give only that step to the user and continue independent preparation. If the user chooses an existing Linux server, use [the server deployment Skill](../deploy-dot-im-gateway/SKILL.md), which shares the same executable and installation logic.
-2. Get the matching executable and its SHA256/source metadata from an actually available authorized artifact or maintainer delivery. A CI build with failed upload is not a download. Use the documented maintainer build only when a binary is unavailable and build dependencies are within scope. Run `--self-test` without credentials, then prepare the connector in the user's own terminal. Do not collect private configuration into chat.
-3. Check missing prerequisites before asking for actions. QQ requires an official bot the user administers, C2C eligibility and the appropriate WebSocket setup; open [the official console](https://q.qq.com/) and let the user select the intended app. Ordinary QQ login is insufficient. Inspect account permissions and test-user requirements without revealing AppSecret; modifications need the requested concrete scope. Weixin uses the connector's official QR flow, without AppID/AppSecret. Do not install OpenClaw or a separate QR helper; the private executable already contains the fixed official Tencent SDK. The user scans, approves and enters phone digits themselves; Weixin eligibility is determined by the platform.
-4. Reuse the original dot, its intended account/organization and private Tunnel. For missing resources, use [Tunnel settings](https://platform.openai.com/settings/organization/tunnels), [organization settings](https://platform.openai.com/settings/organization/general), [key settings](https://platform.openai.com/settings/organization/api-keys) and [the official guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). Confirm actual login and account association, not merely an open page. Consolidate necessary authorization once: exact target/account, private Tunnel/plugin, runtime key with only Tunnels Read+Use, selected owner-only text channel, memory-only credentials and temporary message storage. Reuse authorization already granted for that scope. Do not create resources until that scope is approved, and check uncertain outcomes before retrying. Do not request model API access.
-5. The user enters secrets in the loopback page, never in chat. If browser automation would expose a newly generated key in a snapshot, DOM response, log or file, stop before that final generation and hand the final click/copy to the user. Do not retrieve existing hidden secrets or silently persist them. Login, real-name checks, phone approval and purchases require the user's own participation where applicable. Creating a Tunnel or key is not implied by downloading this Skill.
-6. Connect the selected channel. QQ defaults to the bundled official SDK QR flow with generic third-party branding. Reuse the intended bot, optionally pin its AppID, and confirm the returned AppID locally before starting its gateway. A valid official userOpenid supplies owner identity; if missing, use the existing random challenge plus independent local confirmation. Manual AppID/AppSecret entry remains a fallback. Never bind the first sender or a nickname. Weixin identity comes from the official QR confirmed response. Keep the page capability URL, QR and phone code in the local interaction. Closing the process does not remove the Weixin-side binding; tell the user how to disconnect on their phone if desired.
-7. Connect or refresh only the intended private plugin for exactly `gateway_status`, `list_pending`, `read_message`, `reply` when authorized. Have the original dot read one user message, send ack and final, and ask the user to confirm receipt in QQ/Weixin. Readiness and offline tests are not original-dot acceptance. The previous restricted runners passed real text tests; the new portable wrapper still needs its own real acceptance. No attachments, arbitrary recipients/files/commands, proactive sends or Events are enabled by this entry.
-8. Finish the setup page; keep the transport program running. Stop with Ctrl+C and check cleanup output; reconnect by rerunning. Do not install autostart or save long-lived credentials as a convenience. If the user separately asks for persistent deployment, route to the server Skill and its specific authorization. Incoming Events wake-up is a separate later approval and acceptance task, not a capability proved by manual replies.
+1. 登录账号（OpenAI Platform、ChatGPT、服务器 sudo 密码等）。
+2. 创建并复制密钥，**只粘贴到本机连接页**（`127.0.0.1` 开头的页面），不发到聊天里。
+3. 用手机 QQ / 微信扫码并确认（可能要输入手机上显示的数字）。
+4. 在 ChatGPT 添加插件，并把连接页给出的订阅提示词粘贴给原 dot。
+5. 用手机给机器人发一句话，告诉你是否收到回复。
 
-Report the chosen machine/channel, executable hash/commit, actual connection and human-receipt results, any exact blocked step, and the stop/reconnect instruction. Do not report a planned or simulated action as completed.
+## 规则
 
-The private executable uses official `@tencent-connect/qqbot-connector` 1.2.0 through its public `startQrConnect` callback API, with terminal QR output disabled and `source=''`. Preserve [third-party notices](../../THIRD_PARTY_NOTICES.md): the SDK is UNLICENSED, not covered by this project's MIT license; the owner's private integration request is not a Tencent redistribution grant. Do not publish the repository/binary under a presumed MIT grant. Real phone scanning still needs the user's current scoped authorization. No credentials are printed, written to files, or reused after cancellation; SDK work terminates on cancellation, expiry or a two-minute deadline. Do not copy private SDK endpoints or change branding.
+- **一次确认**：开始动手前，把要做的事列成一段话，让用户回复「同意」一次。之后同一范围内的步骤直接执行，不再逐个询问；超出范围（换服务器、安装系统软件包、换绑另一个账号、卸载）才再问。
+- **秘密不进聊天**：运行密钥、AppSecret、二维码、手机验证码、连接页链接（`#` 后面是一次性令牌）都不复述、不截图、不写入文件。需要打开连接页时，直接调用本机浏览器打开，不把链接贴出来。
+- **只连本人**：只处理用户本人与自己机器人之间的私聊文字；不绑定第一个发消息的人、昵称或群聊。
+- **出错先自救**：看输出里的错误码，对照 [服务器部署 Skill 的故障恢复表](../deploy-dot-im-gateway/SKILL.md#故障恢复) 自动处理，同一错误最多自动重试一次；仍失败时告诉用户错误码、原因和下一步，一两句话即可。
+- **证据才算完成**：没有看到手机实际收到回复之前，不说「已完成」。
+
+## 第 1 步：选路线（最多问一个问题）
+
+先检查本机有没有可用的 SSH 配置（如 `~/.ssh/config` 中的主机）。然后问用户：
+
+> 你有一台能用 SSH 登录的 Linux 服务器吗？有的话可以 7×24 小时在线、来消息自动叫醒 dot；没有的话就用这台 Windows 电脑临时连接，电脑关机、睡眠或关掉窗口就会断开。
+
+- **有服务器** → 读取并完整执行 [服务器部署 Skill](../deploy-dot-im-gateway/SKILL.md)。推荐路线。
+- **没有服务器，用 Windows x64** → 继续下面的「Windows 一次性连接」。
+- 其他系统（macOS、ARM）→ 说明暂不支持本机连接，建议使用服务器路线。
+
+## Windows 一次性连接
+
+特点：不安装任何东西、不保存凭据、不开机自启、**不会自动唤醒 dot**（来消息后要用户主动让 dot 去看）。连接期间窗口要一直开着。
+
+### 一次确认模板
+
+> 我将在这台电脑上：下载并校验 dot-im-connect 单文件程序 → 打开本机连接页 → 你在页面里填 Tunnel 信息、用手机扫码 → 连接你本人的 QQ/微信私聊文字到原 dot。密钥只留在程序内存，关闭窗口即断开并清理临时数据。回复「同意」开始。
+
+### 步骤
+
+1. **下载并校验**（PowerShell）：
+
+   ```powershell
+   $d="$env:LOCALAPPDATA\dot-im-connect"; New-Item -ItemType Directory -Force $d | Out-Null
+   $r=Invoke-RestMethod https://api.github.com/repos/Flysky701/dot-im-gateway/releases/latest
+   foreach($n in 'dot-im-connect-win32-x64.exe','dot-im-connect-win32-x64.exe.sha256'){ $a=$r.assets|?{$_.name -eq $n}; Invoke-WebRequest $a.browser_download_url -OutFile "$d\$n" }
+   $want=(Get-Content "$d\dot-im-connect-win32-x64.exe.sha256").Split(' ')[0]
+   if((Get-FileHash "$d\dot-im-connect-win32-x64.exe" -Algorithm SHA256).Hash -ne $want.ToUpper()){ throw 'checksum_mismatch' }
+   & "$d\dot-im-connect-win32-x64.exe" --self-test
+   ```
+
+   记录 Release 版本号和 SHA256。没有已发布的 Release 时，告诉用户「维护者还没发布 Windows 版本」，建议改走服务器路线；只有用户同意安装 Node 24.21.0 和 Python 3 时，才按 [维护者构建](../../docs/PORTABLE.md#维护者构建用户不需要) 在本机构建。Windows 可能提示「未知发布者」，让用户自己决定是否继续，不要替用户绕过。
+
+2. **启动**：在一个保持打开的终端窗口运行 `& "$d\dot-im-connect-win32-x64.exe"`。程序会自动打开本机浏览器连接页。端口被占用时加 `--port 8799`。
+3. **准备 OpenAI 三项**（首次）：按 [服务器 Skill 的「准备 Tunnel」](../deploy-dot-im-gateway/SKILL.md#第-4-步准备-tunnel首次需要用户) 指导用户；三项直接填进连接页。
+4. **用户在页面操作**：选 QQ（推荐扫码）或微信 → 填三项 → 勾选同意 → 开始连接 → 用手机扫码确认。QQ 扫码后在页面核对机器人 AppID；没有官方身份返回时，页面会给出一串验证文字，让用户用本人 QQ 发给机器人，再在页面确认。
+5. **在 ChatGPT 添加插件**（首次）：同 [服务器 Skill 第 6 步](../deploy-dot-im-gateway/SKILL.md#第-6-步在-chatgpt-添加插件并订阅首次需要用户)，但**不需要订阅**：一次性模式没有事件推送。
+6. **验收**：用户用手机给机器人发「你好」→ 让用户对原 dot 说「用 dot-im-gateway 读取我刚发的消息，先 ack 再 final 回复」→ 用户确认手机收到两条回复。
+7. 告诉用户：可以关掉网页，但**终端窗口要一直开着**；断开后重新运行同一个程序即可；需要 7×24 在线和自动唤醒时改走服务器路线。微信侧的绑定要在手机上自行解除。
+
+## 汇报格式
+
+完成或停止时，用 3～6 行告诉用户：路线（服务器/Windows）、平台、程序版本与 SHA256（或提交号）、手机实收结果、断开后怎么恢复。被卡住时只说卡在哪一步、错误码、下一步要用户做什么。
+
+## 第三方组件
+
+QQ 扫码使用打包进程序的腾讯官方 `@tencent-connect/qqbot-connector` 1.2.0（通过其公开回调 API，页面显示通用「第三方机器人」）。该 SDK 标注为 UNLICENSED，不属于本项目 MIT 许可范围，详见 [第三方声明](../../THIRD_PARTY_NOTICES.md)。不要复制其私有接口或修改品牌信息。

@@ -22,4 +22,6 @@ Python 部署测试共 5 项：Windows 执行 4 项，通过后跳过 Linux 专�
 
 通用 Skill 验证已补齐：现有解释器未含 PyYAML，按授权在被 Git 忽略的 `runtime/skill-validator-venv` 中，使用 pip 的官方 `https://pypi.org/simple` 索引和 `--only-binary=:all: --no-deps` 安装 PyYAML 6.0.3；未修改系统 Python。使用该解释器以 `-X utf8` 运行已有 `skill-creator/scripts/quick_validate.py skills/deploy-dot-im-gateway`，退出码 0，输出 `Skill is valid!`。部署 Skill 无需修改。此依赖仅用于本次开发验证，不进入服务依赖或交付包。
 
+2026-10-23 自动化改造（v0.1.1）离线验证：`npm test` 85 项全部通过（新增 handoff 计划/文件权限/恢复/拒绝外部 unit、回调后缀匹配、按平台绑定与旧记录迁移、连接器移交与失败恢复、会话 onBound）；`npm run check` 通过；Python 14 项通过（新增卸载只移除带标记的 tunnel unit）。用官方 Node 24.21.0 实际构建 Linux 单文件，构建内自检通过；在临时 HOME 中用 `deploy.py install` 模拟安装后运行 `--handoff`，页面状态为 `mode=handoff`，未安装时报 `service_not_installed`，非法路径报 `unsafe_prefix`，Ctrl+C 清理完成。真实 systemd、真实 Tunnel、扫码和原 dot 订阅未在此环境运行。
+
 待真人验收：详见 [ACCEPTANCE.md](ACCEPTANCE.md)。官方凭据开通、稳定身份绑定、Tunnel 鉴权转发、原 dot 订阅与执行、本人实际收到 ack/final、微信图片/PDF 收发、真实断网恢复、平台回复窗口及 systemd 常驻均需用户环境证据。
