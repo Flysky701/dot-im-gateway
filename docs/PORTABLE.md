@@ -20,9 +20,17 @@
 
 ## 获取
 
-`v0.1.2` 为源码发布，不附带预编译程序，可按下方构建说明在本机生成。[release 工作流](../.github/workflows/release.yml) 在推送 `v*` 标签时自动检查并生成源码草稿；确认第三方再分发许可后，维护者才可手动启用 `build_binaries` 构建单文件草稿。
+[v0.1.2 下载页](https://github.com/Flysky701/dot-im-gateway/releases/tag/v0.1.2)提供 Windows 和 Linux x64 单文件程序。
 
-如果某个 Release 附有对应程序，下载它及同名 `.sha256`，核对后再运行。服务器上的 `scripts/server-bootstrap.sh` 只使用与当前源码提交完全一致的 Release（核对 `.sha256` 和 `.build.json` 的 `sourceCommit`），否则按固定依赖构建。已发布的 Release 不会被工作流覆盖。
+- Windows：下载 `dot-im-connect-win32-x64.exe`，双击启动。
+- Linux：下载 `dot-im-connect-linux-x64`，在文件所在目录运行：
+
+  ```sh
+  chmod +x dot-im-connect-linux-x64
+  ./dot-im-connect-linux-x64
+  ```
+
+服务器无桌面时使用下方的一次性连接或常驻服务说明。Release 同时提供 `.sha256` 和 `.build.json`；`scripts/server-bootstrap.sh` 会核对程序与源码版本，不匹配时按固定依赖构建。
 
 运行 `dot-im-connect --self-test` 只验证内置运行时、SQLite、官方客户端能启动及临时目录清理，不连接账号。
 
@@ -60,7 +68,7 @@ ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<BIN> --handoff <PREFIX> --por
 
 QQ 扫码通过固定的[官方 connector 1.2.0](https://www.npmjs.com/package/@tencent-connect/qqbot-connector) 公开回调 API 实现；手机页面显示通用「第三方机器人」。二维码只在本机页面展示；取消、过期或两分钟未完成会终止独立 SDK 执行单元，丢弃迟到凭据。程序不创建或替换机器人。
 
-该 SDK 元数据为 UNLICENSED，不属于本项目 MIT 许可范围；保留原来源和声明，不将它重新许可为 MIT。**公开发布包含该 SDK 的二进制前，维护者需自行确认再分发许可**，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
+依赖来源和许可见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 一次运行连接一个渠道；同一用户同时只允许一个连接程序实例。一次性模式只接收本人文字并原会话回复，附件、Events 和主动发送均不开放；常驻服务的完整能力见 [README](../README.md)。官方客户端 `/readyz` 成功只代表客户端就绪，不能证明原 dot 已读取或手机已收到。突然断电或 SIGKILL 无法保证一次性模式的临时数据清理。
 

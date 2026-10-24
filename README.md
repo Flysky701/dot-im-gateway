@@ -34,7 +34,7 @@ https://github.com/Flysky701/dot-im-gateway/blob/v0.1.2/skills/connect-dot-im-ga
 
 **自己配置：**
 
-1. 从 [Releases](https://github.com/Flysky701/dot-im-gateway/releases) 获取源码，按 [Windows 构建说明](docs/PORTABLE.md)或[服务器部署说明](skills/deploy-dot-im-gateway/SKILL.md)安装。`v0.1.2` 暂不提供预编译程序。
+1. 下载 [Windows 程序](https://github.com/Flysky701/dot-im-gateway/releases/download/v0.1.2/dot-im-connect-win32-x64.exe)或 [Linux 程序](https://github.com/Flysky701/dot-im-gateway/releases/download/v0.1.2/dot-im-connect-linux-x64)，无需安装 Node 或 Python。Windows 双击启动；Linux 的启动命令见[连接说明](docs/PORTABLE.md)，常驻运行见[服务器部署](skills/deploy-dot-im-gateway/SKILL.md)。
 2. 准备 Tunnel 和仅有 `Tunnels: Read + Use` 权限的密钥，直接填入连接页，再扫码绑定。
 3. 在 ChatGPT 添加私人插件，Connection 选对应 Tunnel、Authentication 选 None，然后在目标 dot 启用。临时模式让 dot 查看消息；常驻模式订阅 `message.created`，指定 `platform=qq` 或 `platform=weixin`。
 
