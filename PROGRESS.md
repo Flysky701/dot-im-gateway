@@ -1,5 +1,7 @@
 # 阶段记录
 
+- 2026-10-24 14:09 CST：按用户要求收束为[稳定维护基线](docs/STABLE_BASELINE.md)。Server3 保持 `4961c4d` / release `1e0cdddfa69e9606`，本轮仅整理文档及固定版本，不重启或改变服务器配置。两项服务 active、健康与 Tunnel ready、linger=yes、各自 NRestarts=0，QQ/微信各 1 条有效订阅。原云端事件任务已于 13:55 保存读信优先、自然回复、原渠道结果回传及补查遗漏规则。修正后的最新两条 QQ 消息均已有 final accepted，未出现新增漏回；第一条全程 35.70 秒，第二条有 ack 和 final。历史 5 条无 final 的原因已查明且未补发；不把小样本通过视为长期稳定性保证。未部署开发分支中的任务生命周期/输入状态功能。
+
 - 2026-10-23 QQ 自动处理冒烟验收：两次 `message.created` 触发均完成处理，`ack` 和 `final` 均获平台 `accepted`。第一次已有收件确认，第二次尚无收件确认。以上仅为两次测试记录，全天候稳定性及微信订阅仍待验证。
 
 - 2026-10-23 第二轮评审修复：交接失败/取消时，按平台精确撤销网关为新加平台写入数据库的绑定和同步进度（`binding.*`、`weixin.cursor` 或 `qq.session/qq.seq`），已收到的消息与其他平台不动，失败后可换账号重绑；停止服务前用 `systemctl --user show` 核对实际加载的 unit 文件，`/etc/systemd/user` 或临时同名 unit 一律不碰；构建记录对有未提交修改的源码标 `<commit>-dirty`，bootstrap 不会把它当干净版本复用。Node 97 项通过。

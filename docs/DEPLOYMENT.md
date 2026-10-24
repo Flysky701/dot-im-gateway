@@ -74,7 +74,7 @@ Gateway bearer 至少 32 字符，使用用户批准的随机凭据。环境文�
 
 ### D. 真实事件订阅
 
-向用户展示订阅行为：分别订阅 `message.created`、filter `platform=qq` 与 `platform=weixin`，事件进入同一个原 dot；dot 读取消息后给原消息 ack，任务完成给 final。无跨平台广播。
+向用户展示订阅行为：分别订阅 `message.created`、filter `platform=qq` 与 `platform=weixin`，事件进入同一个原 dot；触发后优先读信，普通对话直接自然回复 final，耗时任务才按需发有意义的进度 ack，最终结果回原渠道。将规则保存在原事件任务的说明中，网页回复不算渠道回信；升级保留原任务和订阅，详见[事件回信规则](../skills/deploy-dot-im-gateway/references/event-replies.md)。无跨平台广播。
 
 handoff 成功即视为用户同意订阅：`allowSubscriptions=true`，回调白名单默认 `chatgpt.com`、`.chatgpt.com`、`openai.com`、`.openai.com`。手动配置时同样把 `allowSubscriptions` 改为 true，并填写白名单；精确条目只匹配该主机名，以 `.` 开头的条目只匹配其子域名（不匹配 `evil-openai.com` 或 `openai.com.evil`）。未知 callback 将失败关闭。让用户在原 dot 请求建立订阅；网关验证签名 challenge 后才持久化。不能由部署脚本伪造订阅来源或代替原 dot 创建事件任务。
 
