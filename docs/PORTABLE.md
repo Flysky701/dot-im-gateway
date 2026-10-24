@@ -20,7 +20,7 @@
 
 ## 获取
 
-`v0.1.1` 为源码发布，不附带预编译程序，可按下方构建说明在本机生成。[release 工作流](../.github/workflows/release.yml) 在推送 `v*` 标签时自动检查并生成源码草稿；确认第三方再分发许可后，维护者才可手动启用 `build_binaries` 构建单文件草稿。
+`v0.1.2` 为源码发布，不附带预编译程序，可按下方构建说明在本机生成。[release 工作流](../.github/workflows/release.yml) 在推送 `v*` 标签时自动检查并生成源码草稿；确认第三方再分发许可后，维护者才可手动启用 `build_binaries` 构建单文件草稿。
 
 如果某个 Release 附有对应程序，下载它及同名 `.sha256`，核对后再运行。服务器上的 `scripts/server-bootstrap.sh` 只使用与当前源码提交完全一致的 Release（核对 `.sha256` 和 `.build.json` 的 `sourceCommit`），否则按固定依赖构建。已发布的 Release 不会被工作流覆盖。
 
