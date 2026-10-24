@@ -1,5 +1,7 @@
 # 上游审查（2026-10-22）
 
+2026-10-24 对话流程与 QQ 文件更新另固定核实了腾讯 `qqbot-nodejs`、`qqbot-agent-sdk` 和 Hermes 当前文件模块。采用点与固定 commit 见[对话流程](CONVERSATION.md#自然回复与连续短句)和 [QQ 文件参考](QQ_MEDIA.md#参考与验证)。仅参考协议和队列机制，没有复制实现或引入运行时依赖。
+
 固定版本见 `references.lock.json`，不随 main 自动漂移。仅读取仓库文件，没有运行第三方安装器或复制其整个运行时。
 
 | 项目 | 固定 commit | 阅读内容与采用点 |

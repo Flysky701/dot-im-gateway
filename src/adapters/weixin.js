@@ -29,7 +29,7 @@ export class Weixin {
     ensure(Array.isArray(d.msgs||[])&&(d.msgs||[]).length<=100,'weixin_invalid_batch');
     str(d.get_updates_buf||this.store.get('weixin.cursor')||'empty',65536);
     const records=(d.msgs||[]).filter(m=>this.authorized(m)).map(raw=>{const key=String(raw.message_id);ensure(/^[0-9a-zA-Z_-]{1,256}$/.test(key),'invalid_message_id');return {key,raw};});
-    this.store.checkpoint('weixin',records,'weixin.cursor',d.get_updates_buf??this.store.get('weixin.cursor')??'');
+    this.store.checkpoint('weixin',records,'weixin.cursor',d.get_updates_buf??this.store.get('weixin.cursor')??'',this.clock());
   }
   async normalize(raw){
     ensure(this.authorized(raw),'owner_mismatch');str(raw.context_token,8192);
@@ -60,12 +60,28 @@ export class Weixin {
       throw e;
     }
   }
+  async sendNotification(r){
+    ensure(this.c.enabled&&this.c.ownerId&&this.c.botId,'binding_required');
+    ensure(r.expires>this.clock(),'notification_expired');
+    const payload=JSON.parse(r.payload);str(payload.text,16000);ensure(['none','latest'].includes(payload.context_mode),'context_mode_required');
+    ensure(this.clock()>=this.pausedUntil,'weixin_session_expired');
+    let context;
+    if(payload.context_mode==='latest'){
+      const m=this.store.one("SELECT context FROM messages WHERE platform='weixin' AND owner=? AND conversation=? AND context<>'' AND expires>? ORDER BY created DESC,rowid DESC LIMIT 1",this.c.ownerId,this.c.ownerId,this.clock());
+      ensure(m,'weixin_context_unavailable');context=m.context;
+    }
+    // Explicit experimental 'none' omits context_token even when one is saved.
+    // The local reply TTL is not a platform guarantee for proactive delivery.
+    const d=await this.api('sendmessage',{msg:{from_user_id:'',to_user_id:this.c.ownerId,client_id:r.id,message_type:2,message_state:2,item_list:[{type:1,text_item:{text:payload.text}}],...(context?{context_token:context}:{})}});
+    if(d.ret!==0&&!d.message_id)throw new Fault('weixin_acknowledgement_unknown','uncertain');
+    return d.message_id?String(d.message_id):r.id;
+  }
   async sendReply(m,r){
     ensure(m.owner===this.c.ownerId && m.conversation===this.c.ownerId,'owner_mismatch');
     ensure(m.expires>this.clock()&&m.context,'reply_window_expired');
     const payload=JSON.parse(r.payload);let item;
     if(payload.media_id){
-      const f=this.media.get(payload.media_id,m.id),key=randomBytes(16),filekey=randomBytes(16).toString('hex'),cipher=aes(f.data,key);
+      const f=this.media.get(payload.media_id,m.media_message_id||m.id),key=randomBytes(16),filekey=randomBytes(16).toString('hex'),cipher=aes(f.data,key);
       let u;
       try{u=await this.api('getuploadurl',{filekey,media_type:f.mime==='application/pdf'?3:1,to_user_id:m.owner,rawsize:f.size,rawfilemd5:createHash('md5').update(f.data).digest('hex'),filesize:cipher.length,no_need_thumb:true,aeskey:key.toString('hex')});}
       catch(e){throw new Fault(e.code||'upload_prepare_failed',e.kind==='uncertain'?'retry':e.kind);}

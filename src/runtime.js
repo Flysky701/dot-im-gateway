@@ -26,7 +26,7 @@ export async function serve(config){
   try{
     store=new Store(config.dataDir);store.recover();const media=new Media(store,config);
     const send=config.mode==='live'?request:async()=>{throw new Fault('offline_network_disabled');};
-    const adapters={qq:new QQ(config.qq,store,send),weixin:new Weixin(config.weixin,store,media,send)};
+    const adapters={qq:new QQ(config.qq,store,send,Date.now,media),weixin:new Weixin(config.weixin,store,media,send)};
     const core=new Core(store,config,media,adapters),events=new Events(store,config,send);
     server=makeServer(new RPC(core,events),token);
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(config.port,config.host,resolve);});

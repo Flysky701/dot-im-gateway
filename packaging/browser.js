@@ -93,7 +93,7 @@ function formatError(code) {
 
 function dotPrompt(platform) {
   const n = platform === 'qq' ? 'QQ' : '微信';
-  return `请订阅私人插件 dot-im-gateway 的 message.created 事件（platform=${platform}）。收到${n}消息后按插件说明读取，先回 ack“收到”，处理完再回 final。`;
+  return `请订阅私人插件 dot-im-gateway 的 message.created 事件（platform=${platform}）。收到${n}消息后按新版插件说明读取，短句批次作为一轮理解，自然回复一次。不先发固定“收到”，不显示 ack/final 标签；确实耗时才按需发简短进度。`;
 }
 
 function paint(s) {

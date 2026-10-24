@@ -10,6 +10,7 @@
   "maxMediaBytes": 4194304,
   "maxStoredMediaBytes": 268435456,
   "mediaRetentionHours": 168,
+  "conversation": {"debounceMs": 2000, "maxWaitMs": 8000},
   "qq": {
     "enabled": false,
     "ownerId": "",

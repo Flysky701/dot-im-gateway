@@ -20,7 +20,7 @@ serve [--config FILE]             Loopback service (live requires explicit confi
 status | logs [--config FILE]     Redacted queue counts / audit categories
 backup --to NEW_DIR               Stop service first; includes DB, media and secrets
 restore --from BACKUP --to NEW_DIR  Quarantines pending sends; revokes subscriptions
-reconcile --id REPLY --decision accepted|cancelled  No automatic resend
+reconcile --id REPLY_OR_NOTICE --decision accepted|cancelled  No automatic resend
 upgrade | rollback | uninstall   Deployment plan by default; --apply executes
                                  See python3 scripts/deploy.py --help
 `);

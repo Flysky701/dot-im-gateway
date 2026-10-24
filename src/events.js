@@ -34,7 +34,7 @@ export class Events {
       const oldSecret=rotated?old.secret:(old?.active&&old.rotation_until>now?old.old_secret:null);
       this.store.run(`INSERT INTO subscriptions VALUES(?,?,?,?,?,?,?,?,1) ON CONFLICT(id) DO UPDATE SET secret=excluded.secret,old_secret=excluded.old_secret,rotation_until=excluded.rotation_until,expires=excluded.expires,active=1`,id,this.c.principal,p.arguments.platform,p.delivery.url,p.delivery.secret,oldSecret,rotated?now+300000:(old?.rotation_until||0),now+ttl);
       const sub=this.store.one('SELECT * FROM subscriptions WHERE id=?',id);
-      for(const m of this.store.all("SELECT * FROM messages WHERE platform=? AND NOT EXISTS(SELECT 1 FROM replies WHERE message_id=messages.id AND phase='final' AND state='accepted')",p.arguments.platform))this.store.event(sub,m);
+      for(const m of this.store.all("SELECT * FROM messages WHERE platform=? AND NOT EXISTS(SELECT 1 FROM replies WHERE message_id=messages.id AND phase='final' AND state='accepted')",p.arguments.platform))this.store.event(sub,m,this.clock());
       this.store.run("UPDATE events SET state='pending',attempts=0,due=0 WHERE sub_id=? AND state='expired'",id);
     });
     return {id,refreshBefore:iso(now+ttl),cursor:null,truncated:false};
@@ -47,17 +47,18 @@ export class Events {
   }
   async tick(){
     const now=this.clock();this.store.run('UPDATE subscriptions SET old_secret=NULL WHERE rotation_until<=?',now);
-    const rows=this.store.all("SELECT * FROM events WHERE state='pending' AND due<=? ORDER BY rowid LIMIT 10",now);
+    const rows=this.store.all("SELECT e.* FROM events e LEFT JOIN message_batches b ON b.id=e.message_id WHERE e.state='pending' AND e.due<=? AND (b.ready_at IS NULL OR b.ready_at<=?) ORDER BY e.rowid LIMIT 10",now,now);
     for(const e of rows){
       const sub=this.store.one('SELECT * FROM subscriptions WHERE id=?',e.sub_id);
       if(!sub.active||sub.principal!==this.c.principal||!this.c[sub.platform].enabled){this.store.run("UPDATE events SET state='cancelled' WHERE id=?",e.id);continue;}
       if(sub.expires<=now){this.store.run("UPDATE events SET state='expired' WHERE id=?",e.id);continue;}
-      this.store.run("UPDATE events SET state='sending',attempts=attempts+1 WHERE id=?",e.id);
+      this.store.seal(e.message_id,now);
+      const started=this.clock();this.store.run("UPDATE events SET state='sending',attempts=attempts+1,started_at=COALESCE(started_at,?),last_started_at=? WHERE id=?",started,started,e.id);
       let status=0;try{status=(await this.post(sub,e.id,Buffer.from(e.body))).status;}catch{}
       // Revocation can occur while HTTP is in flight; never reactivate its queue.
       const active=this.store.one('SELECT active FROM subscriptions WHERE id=?',sub.id).active;
       const state=!active?'cancelled':status>=200&&status<300?'accepted':status===410||status===413?'dead':(status===0||status===429||status>=500)&&e.attempts<7?'pending':'dead';
-      this.store.run('UPDATE events SET state=?,due=?,error=? WHERE id=?',state,now+Math.min(300000,1000*2**e.attempts),state==='accepted'?null:'callback_delivery_failed',e.id);
+      this.store.run('UPDATE events SET state=?,due=?,error=?,accepted_at=CASE WHEN ?=\'accepted\' THEN ? ELSE accepted_at END WHERE id=?',state,now+Math.min(300000,1000*2**e.attempts),state==='accepted'?null:'callback_delivery_failed',state,this.clock(),e.id);
       if(status===410)this.store.run('UPDATE subscriptions SET active=0 WHERE id=?',sub.id);
     }
   }
