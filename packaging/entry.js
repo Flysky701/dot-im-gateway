@@ -13,6 +13,8 @@ import {connectServer} from '../src/connect-http.js';
 import {lock} from '../src/runtime.js';
 import {createHandoff,safePrefix} from '../src/handoff.js';
 import {ensure,Fault} from '../src/util.js';
+import {useDnsResolver} from '../src/network.js';
+import {publicDnsResolver} from '../src/public-dns.js';
 
 const text=name=>getAsset(name,'utf8');
 const manifest=JSON.parse(text('manifest'));
@@ -30,11 +32,12 @@ async function childStop(child){
 }
 async function main(){
   if(args.includes('--licenses')){console.log(text('licenses'));return;}
-  if(args.includes('--help')){console.log('dot-im-connect [--port 8789] [--no-browser] [--handoff PREFIX]\nSingle connection: owner text only; this program saves no credentials and installs nothing by itself.\nWindows runs locally; on Linux use an existing SSH local port forward.\nClosing the page keeps the bridge running; Ctrl+C stops it and cleans temporary data.\n--handoff PREFIX (Linux): bind once, then hand the result to the persistent service installed by\n  scripts/deploy.py at PREFIX (credentials go to PREFIX/*.env, 0600). Rerun it to re-authorize.\n--self-test performs offline embedded-runtime checks. --licenses prints bundled notices.');return;}
+  if(args.includes('--help')){console.log('dot-im-connect [--port 8789] [--no-browser] [--public-dns] [--handoff PREFIX]\nSingle connection: owner text only; this program saves no credentials and installs nothing by itself.\nWindows runs locally; on Linux use an existing SSH local port forward.\nClosing the page keeps the bridge running; Ctrl+C stops it and cleans temporary data.\n--public-dns uses AliDNS over HTTPS for this process when a local proxy returns fake IPs.\n--handoff PREFIX (Linux): bind once, then hand the result to the persistent service installed by\n  scripts/deploy.py at PREFIX (credentials go to PREFIX/*.env, 0600). Rerun it to re-authorize.\n--self-test performs offline embedded-runtime checks. --licenses prints bundled notices.');return;}
   const preview=args.includes('--preview'),selfTest=args.includes('--self-test');let port=0;
   const pi=args.indexOf('--port');if(pi>=0){port=Number(args[pi+1]);ensure(Number.isInteger(port)&&port>=1024&&port<=65535,'invalid_port');args.splice(pi,2);}
   let handoffPrefix='';const hi=args.indexOf('--handoff');if(hi>=0){ensure(process.platform==='linux','handoff_requires_linux');handoffPrefix=safePrefix(args[hi+1]);args.splice(hi,2);}
-  ensure(args.every(x=>['--preview','--self-test','--no-browser'].includes(x)),'unknown_option');
+  ensure(args.every(x=>['--preview','--self-test','--no-browser','--public-dns'].includes(x)),'unknown_option');
+  if(args.includes('--public-dns'))useDnsResolver(publicDnsResolver());
   ensure(manifest.platform===process.platform&&manifest.arch===process.arch,'wrong_platform_binary');
   const release=await lock(path.join(os.tmpdir(),'dot-im-connect-single-instance'));
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'dot-im-connect-'));fs.chmodSync(dir,0o700);

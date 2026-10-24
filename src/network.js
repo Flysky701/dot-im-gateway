@@ -2,6 +2,9 @@ import https from 'node:https';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import {ensure, Fault} from './util.js';
+let dnsLookup=dns.lookup;
+// Process-local opt-in for the desktop connector; never changes OS DNS settings.
+export function useDnsResolver(resolver){ensure(typeof resolver==='function','invalid_dns_resolver');dnsLookup=resolver;}
 // Deliberately use only public IPv4. IPv6-only destinations fail closed in v0.1.
 export function publicIPv4(ip) {
   if(net.isIP(ip)!==4) return false;
@@ -20,7 +23,7 @@ export function safeURL(raw, hosts, protocol='https:') {
   ensure(u.protocol===protocol && !u.username && !u.password && !u.hash && (!u.port || u.port==='443') && hostAllowed(u.hostname,hosts) && !net.isIP(u.hostname),'destination_denied');
   return u;
 }
-export async function pinnedOptions(raw, hosts, resolver = dns.lookup, timeout = 10000) {
+export async function pinnedOptions(raw, hosts, resolver = dnsLookup, timeout = 10000) {
   const u=safeURL(raw,hosts);
   let timer,addresses;
   try{
@@ -33,9 +36,9 @@ export async function pinnedOptions(raw, hosts, resolver = dns.lookup, timeout =
   return {u,options:{hostname:u.hostname,port:443,path:u.pathname+u.search,servername:u.hostname,family:4,autoSelectFamily:false,
     lookup:(_h,_o,cb)=>cb(null,address,4), agent:false, rejectUnauthorized:true}};
 }
-export async function request(raw,{hosts,method='POST',headers={},body=Buffer.alloc(0),limit=1048576,timeout=10000,signal}={}) {
+export async function request(raw,{hosts,method='POST',headers={},body=Buffer.alloc(0),limit=1048576,timeout=10000,signal,resolver}={}) {
   if(signal?.aborted)throw new Fault('request_cancelled','retry');
-  let options; try {({options}=await pinnedOptions(raw,hosts));} catch(e) {if(e instanceof Fault) throw e; throw new Fault('network_before_connect','retry');}
+  let options; try {({options}=await pinnedOptions(raw,hosts,resolver));} catch(e) {if(e instanceof Fault) throw e; throw new Fault('network_before_connect','retry');}
   if(signal?.aborted)throw new Fault('request_cancelled','retry');
   return new Promise((resolve,reject)=>{
     let sent=false;

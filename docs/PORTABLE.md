@@ -24,6 +24,8 @@
 
 运行 `dot-im-connect --self-test` 只验证内置运行时、SQLite、官方客户端能启动及临时目录清理，不连接账号。
 
+Windows 使用 FlClash/Mihomo 等 Fake-IP 代理时，系统可能把官方接口解析到 `198.18.x.x`，程序会报 `non_public_destination`。可用 `dot-im-connect-win32-x64.exe --public-dns` 显式启用本进程的阿里公共 DNS HTTPS 解析；只向解析服务发送目标域名，不发送账号凭据。系统代理、DNS 设置和 Server3 不变，公网地址检查、目标域名白名单及 TLS 验证仍保持开启。默认启动仍使用系统 DNS。
+
 ## 一次性连接
 
 1. 在本人终端运行。Windows 默认打开本机页面；Linux 用 `./dot-im-connect-linux-x64 --port 8789 --no-browser`，并在自己电脑上建立 `ssh -N -L 127.0.0.1:8789:127.0.0.1:8789 <服务器>`。页面链接含一次性令牌，只在本机浏览器打开，不贴聊天、不截图。端口占用时两端换成同一个其他端口。
