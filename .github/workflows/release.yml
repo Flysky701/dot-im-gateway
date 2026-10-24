@@ -1,19 +1,20 @@
 name: release
-# Tags create a tested source-only DRAFT release. Portable binaries require an
-# explicit manual build after the maintainer reviews third-party redistribution
-# permissions. Review the draft before publishing; server-bootstrap.sh only
-# downloads published assets and verifies the .sha256 file and source commit before use.
-# A published release is never modified: rerunning for it fails instead of overwriting.
+# Tags create a draft. Manual runs can build binaries for a draft or append
+# missing assets to an existing published release without replacing its files.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build, for example v0.1.1
+        description: Existing tag to build, for example v0.1.2
         required: true
       build_binaries:
-        description: Build private draft binaries (review third-party redistribution permission first)
+        description: Build Windows and Linux executables
+        type: boolean
+        default: false
+      attach_to_published:
+        description: Append binaries to an existing published release
         type: boolean
         default: false
 permissions:
@@ -22,6 +23,7 @@ env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 jobs:
   verify:
+    if: ${{ !inputs.attach_to_published }}
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
@@ -58,7 +60,7 @@ jobs:
             gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Source release for $TAG. See README.md for usage and docs/THIRD_PARTY_NOTICES.md for dependency licensing."
           fi
   build:
-    if: github.event_name == 'workflow_dispatch' && inputs.build_binaries
+    if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && inputs.build_binaries && (needs.draft.result == 'success' || inputs.attach_to_published) }}
     needs: draft
     timeout-minutes: 15
     strategy:
@@ -77,6 +79,13 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.13'
+      - name: Check tag and release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "v$(node -p 'require("./package.json").version')" = "$TAG"
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null
       - run: npm ci --prefix packaging --ignore-scripts --no-audit --no-fund
       - run: python packaging/fetch.py
       - run: node packaging/build.js
@@ -87,12 +96,17 @@ jobs:
           cd dist
           for f in *.sha256; do sha256sum -c "$f"; done
           ls -l
-      - name: Upload to draft release
+      - name: Upload release assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          ATTACH_TO_PUBLISHED: ${{ inputs.attach_to_published }}
         run: |
-          # Re-check right before uploading: the draft may have been published meanwhile.
           draft="$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)"
-          if [ "$draft" != true ]; then echo "::error::$TAG was published during the build; not overwriting its assets"; exit 1; fi
-          gh release upload "$TAG" dist/dot-im-connect-* -R "$GITHUB_REPOSITORY" --clobber
+          if [ "$ATTACH_TO_PUBLISHED" = true ]; then
+            test "$draft" = false
+            gh release upload "$TAG" dist/dot-im-connect-* -R "$GITHUB_REPOSITORY"
+          else
+            if [ "$draft" != true ]; then echo "::error::$TAG is already published"; exit 1; fi
+            gh release upload "$TAG" dist/dot-im-connect-* -R "$GITHUB_REPOSITORY" --clobber
+          fi
