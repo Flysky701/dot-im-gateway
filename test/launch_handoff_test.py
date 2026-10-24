@@ -144,9 +144,14 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(browser_errors, browser_errors)
         self.assertTrue(all(p.poll() is not None for p in children))
         for p in (args.redirect_port, args.local_port):
+            with socket.socket() as probe:
+                probe.settimeout(1)
+                self.assertNotEqual(probe.connect_ex(('127.0.0.1', p)), 0)
             with socket.socket() as s:
-                # Rebinding verifies both the landing listener and child forward
-                # are released; Windows forbids rebind while still listening.
+                # POSIX can retain closed HTTP connections in TIME_WAIT. Reuse
+                # that address, but still require the listener above to be gone.
+                if os.name == 'posix':
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(('127.0.0.1', p))
         self.assertNotIn(TOKEN, output.getvalue())
         self.assertNotIn(SECRET, output.getvalue())

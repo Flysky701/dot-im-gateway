@@ -4,8 +4,8 @@
 
 - Tencent/openclaw-weixin：MIT，Copyright (C) 2026 Tencent。微信协议字段、媒体 AES-128-ECB/PKCS7、CDN 上传下载以及消息构造依据该参考重新实现，保留其声明。
 - Arcueid77/dot-qq-bridge：MIT，Copyright (c) 2026 A2KT。QQ 稳定身份、被动回复和网关状态设计参考该实现。其整体 MIT **不覆盖**第三方扫码依赖。
-- `@tencent-connect/qqbot-connector@1.2.0`：官方 npm 元数据为 **UNLICENSED**，发布包没有独立 LICENSE/NOTICE。按项目所有者本次明确要求，固定版本集成于私人便携构建，仅调用公开 `startQrConnect`，默认通用第三方来源，不伪装其他客户端。来源 https://www.npmjs.com/package/@tencent-connect/qqbot-connector ，完整性 `sha512-FAOUCvgxP4M9UiYbHrtVgJ7BavSlh1CHJPjeEQuTAkP9MZ91lX4yATqv6I/lB9yp15nVq+G2DaGSSJwQTSoSsA==`，锁定于 packaging/package-lock.json。原 package.json、README 随 `--licenses` 保留；项目 MIT 和所有者的工程授权均不构成腾讯的再分发许可。当前不公开发布仓库或产物。
-- 上述 SDK 不在仓库源码中，只在构建单文件时按 `packaging/package-lock.json` 获取并打包。仓库公开不等于获得该 SDK 的再分发许可：release 工作流只生成**草稿** Release，公开发布包含该 SDK 的二进制前，维护者需自行确认许可；未确认时可只公开源码，由用户在自己的机器上构建（`server-bootstrap.sh` 在没有已发布 Release 时会自动构建）。
+- `@tencent-connect/qqbot-connector@1.2.0`：官方 npm 元数据为 **UNLICENSED**，发布包没有独立 LICENSE/NOTICE。按项目所有者本次明确要求，固定版本集成于私人便携构建，仅调用公开 `startQrConnect`，默认通用第三方来源，不伪装其他客户端。来源 https://www.npmjs.com/package/@tencent-connect/qqbot-connector ，完整性 `sha512-FAOUCvgxP4M9UiYbHrtVgJ7BavSlh1CHJPjeEQuTAkP9MZ91lX4yATqv6I/lB9yp15nVq+G2DaGSSJwQTSoSsA==`，锁定于 packaging/package-lock.json。原 package.json、README 随 `--licenses` 保留；项目 MIT 和所有者的工程授权均不构成腾讯的再分发许可。该集成授权仅适用于此前私人构建，不授权公开再分发该 SDK。
+- 上述 SDK 不在仓库源码中，只在构建单文件时按 `packaging/package-lock.json` 获取并打包。仓库公开不等于获得该 SDK 的再分发许可：`v0.1.1` 只发布源码，不附带含该 SDK 的二进制。release 工作流默认生成源码草稿；维护者确认许可后才可手动启用单文件构建。用户可在自己的机器上构建（`server-bootstrap.sh` 在没有匹配的已发布产物时会自动构建）。
 - SDK 依赖 `qrcode-terminal 0.12.0`：Apache-2.0，含 Kazuhiko Arase 2009 的 MIT QRCode 实现。保留包 LICENSE、原 QR 算法署名和 MIT 文本于 `--licenses`；实际页面二维码仍使用 qrcode-generator，不把 SDK 控制台二维码输出到日志。
 - cd233ljx/wechat-dot-bridge、RerrentLinden/dots-wechat-bridge：各自 MIT；阅读其 NOTICE，保留参考许可证，未打包其 Python 依赖或音频组件。
 - NousResearch/hermes-agent：MIT，Copyright (c) 2025 Nous Research；只参考 SessionSource 会话来源设计，不引入 Hermes 运行时。

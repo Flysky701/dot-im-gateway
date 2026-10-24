@@ -1,7 +1,7 @@
 name: release
-# Push a tag such as v0.1.1 (or run manually with an existing tag) to build the
-# single-file connectors on clean runners and attach them, with SHA256 files, to a
-# DRAFT release. Review the draft and publish it yourself; server-bootstrap.sh only
+# Tags create a tested source-only DRAFT release. Portable binaries require an
+# explicit manual build after the maintainer reviews third-party redistribution
+# permissions. Review the draft before publishing; server-bootstrap.sh only
 # downloads published assets and verifies the .sha256 file and source commit before use.
 # A published release is never modified: rerunning for it fails instead of overwriting.
 on:
@@ -12,6 +12,10 @@ on:
       tag:
         description: Existing tag to build, for example v0.1.1
         required: true
+      build_binaries:
+        description: Build private draft binaries (review third-party redistribution permission first)
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -51,9 +55,10 @@ jobs:
             draft="$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)"
             if [ "$draft" != true ]; then echo "::error::$TAG is already published; bump the version and tag again instead of rebuilding"; exit 1; fi
           else
-            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Single-file connectors for $TAG. Verify the .sha256 files. See docs/PORTABLE.md and THIRD_PARTY_NOTICES.md."
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Source release for $TAG. See README.md for usage and THIRD_PARTY_NOTICES.md for dependency licensing."
           fi
   build:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_binaries
     needs: draft
     timeout-minutes: 15
     strategy:
