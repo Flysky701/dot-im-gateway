@@ -12,9 +12,4 @@ SQLite 保留全部原消息，另存批次成员与就绪时间。每批只生�
 
 耗时查询中的接收到事件、事件排队等待包含这段合并窗口，不能据此判断为网络慢。dot 读取到最终回复之间还包含模型推理、工具和等待，不等于纯思考时间。
 
-升级服务后刷新原插件工具，并给原 dot 更新旧的“先收到再结果”规则；保留已有订阅。测试可以分开发“帮我看一下”“这个方案”“哪里可以改”，观察是否得到一条结合三句的回复。平台接受和手机实收仍分开记录。
-
-参考机制，未复制上游代码：
-
-- 腾讯官方 [qqbot-nodejs concurrency-guard](https://github.com/tencent-connect/qqbot-nodejs/blob/429a0f1b798f3b0fcef3679e207dbc0469a1df2d/src/middleware/concurrency-guard.ts)：按目标串行处理及批次合并，按顺序拼接正文；本项目用持久化时间窗口适配外部 dot。
-- [Hermes busy queue](https://github.com/NousResearch/hermes-agent/blob/75c4483e3b126476b1d5bb078369824d343a1639/gateway/run_busy.py)：区分会话来源和队列，避免后续消息覆盖此前待处理消息；文件等独立任务不盲目混成一条。
+升级服务后刷新原插件工具，并给原 dot 更新旧的“先收到再结果”规则；保留已有订阅。

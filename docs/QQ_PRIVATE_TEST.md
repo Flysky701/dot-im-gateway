@@ -1,6 +1,6 @@
-# QQ 本人文字限时测试
+# QQ 本人文字限时连接
 
-这是独立于正式服务的 Linux 交互入口。本次本人文字已通过真实原 dot 与客户端实收验收，见[脱敏记录](TEXT_ACCEPTANCE_2026-10-22.md)；合成测试不能替代其他账号的准入、送达或生产验收。
+这是独立于常驻服务的 Linux 文字连接入口，最多运行 30 分钟。
 
 ## 身份路径与威胁模型
 
@@ -53,9 +53,3 @@ python3 scripts/qq_private_test.py \
 每次在父目录下创建随机 `qq-test-*` 目录，0700；SQLite 0600，暂存本人消息、身份绑定哈希及回复状态。没有长期 secret/config 文件。停止自己的 Node/官方客户端进程组（超出 3 秒终止宽限则强制结束）后，只删除本轮新建目录；清理验证目录 inode、父目录和符号链接，不删除历史数据或父目录。`.qq-test.lock` 是空锁文件，可保留。输出 `data_removed=true` 才确认清理成功；失败报告残留路径，不打印数据。
 
 SIGKILL、断电或监督进程崩溃无法执行 finally；若客户端残留或目录保留，必须按本轮进程/路径核实后处理，不能盲删。备份、平台侧 QQ/OpenAI 历史、已创建插件/Tunnel 和 key 不因本地清理自动删除。脚本不修改插件权限，结束后需由已获授权的操作者恢复先前只读连接；未来重启 Tunnel 前重新核对工具面。没有 systemd、自启、长期订阅或会话自动续期。
-
-## 离线验证
-
-`node --test test/qq-test.test.js` 用模拟 QQ 传输与真实 loopback HTTP 验证绑定、越权、去重、ack/final、EOF 和超时。不调用 QQ/OpenAI。`python3 -m unittest discover -s test -p '*_test.py' -v` 的 Linux 项使用合成输入、PTY 和惰性子进程检验隐藏输入、超时、精确清理；Windows 明确跳过 Linux 专属部分。完整 CI 同时运行两平台。
-
-本次已核实有效凭据、官方返回的 WSS hostname、挑战账号对应、私人插件四工具发现、QQ 收发及实际送达。MCP Events 自动触发不属于本入口范围，仍待独立明确授权与验收。每次新环境仍须核对精确 WSS hostname；本次官方 REST 新域名发现返回 api.sgroup.qq.com，不能只将文档示例 api.bot.qq.com 当成唯一 WSS 结果，也不能放开任意域名。

@@ -78,7 +78,7 @@ Gateway bearer 至少 32 字符，使用用户批准的随机凭据。环境文�
 
 handoff 成功即视为用户同意订阅：`allowSubscriptions=true`，回调白名单默认 `chatgpt.com`、`.chatgpt.com`、`openai.com`、`.openai.com`。手动配置时同样把 `allowSubscriptions` 改为 true，并填写白名单；精确条目只匹配该主机名，以 `.` 开头的条目只匹配其子域名（不匹配 `evil-openai.com` 或 `openai.com.evil`）。未知 callback 将失败关闭。让用户在原 dot 请求建立订阅；网关验证签名 challenge 后才持久化。不能由部署脚本伪造订阅来源或代替原 dot 创建事件任务。
 
-## 常驻和验收
+## 检查运行状态
 
 ```sh
 systemctl --user start dot-im-gateway.service
@@ -86,4 +86,4 @@ systemctl --user status dot-im-gateway.service
 journalctl --user -u dot-im-gateway.service --since today
 ```
 
-官方 tunnel-client 服务运行后（handoff 自动完成），执行 [真人验收清单](ACCEPTANCE.md)。用户服务随登出/开机保活需要 linger：`sudo loginctl enable-linger "$USER"`；bootstrap 和 handoff 都会报告当前 linger 状态，但不会自行修改。服务器重启、断网和 token 失效应在用户测试环境验证。
+handoff 完成后，使用 `scripts/server-status.sh` 查看网关、Tunnel 和平台绑定状态。用户服务随登出/开机保活需要 linger：`sudo loginctl enable-linger "$USER"`；bootstrap 和 handoff 都会报告当前 linger 状态，但不会自行修改。服务器重启、断网和 token 失效应在用户测试环境验证。

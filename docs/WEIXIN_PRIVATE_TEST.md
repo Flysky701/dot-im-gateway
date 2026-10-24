@@ -1,6 +1,6 @@
-# 微信本人文字 30 分钟扫码测试
+# 微信本人文字限时连接
 
-本次真人结果见[验收记录](TEXT_ACCEPTANCE_2026-10-22.md)。独立 Linux 交互入口，Node 24.21+、Python 3.10+，不安装 OpenClaw。协议参考 Tencent/openclaw-weixin 固定提交 874637a0dbc24050f72d1385add4fc6170a2d726 的 login-qr.ts/protocol.md；客户端协议参考不保证所有账号/地区准入。
+独立 Linux 交互入口，Node 24.21+、Python 3.10+，不安装 OpenClaw。协议参考 Tencent/openclaw-weixin 固定提交 874637a0dbc24050f72d1385add4fc6170a2d726 的 login-qr.ts/protocol.md；客户端协议参考不保证所有账号/地区准入。
 
 用户先批准目标目录、官方扫码绑定、本人消息经私人服务器/OpenAI读取和回复、临时凭据与清理范围。先正常退出使用同一 Tunnel 的其他测试；脚本检测到同路径官方客户端仍在运行会拒绝启动，不自动停止其他服务。
 
@@ -23,5 +23,3 @@ python3 scripts/weixin_private_test.py \
 最长 30 分钟包含扫码。STOP/Ctrl+C/EOF/SIGTERM/SIGHUP/到期停止自己创建的进程并删除新建会话目录；回执 data_removed=true / processes_remaining=false 才算清理完成。SIGKILL/断电无法保证 finally；需按残留核验，不盲删。平台绑定不会随退出撤销，用户可在手机 ClawBot 管理中断开。无媒体、Events、自启、长期凭据文件或自动续期。
 
 二维码库为 [vendor 的未修改 qrcode 8.2 wheel](../vendor/README.md)，校验 SHA256 后只加载终端渲染，无安装脚本、Pillow 或系统 Python 修改。
-
-离线：`node --test test/weixin-test.test.js`；`python3 -m unittest discover -s test -p weixin_private_test_test.py -v`。覆盖 QR 字段、验证码、重定向拒绝、缺身份失败、四工具、本人去重/上下文回复、EOF/超时、合成 PTY 隐藏输入及清理；绝不生成真实二维码。

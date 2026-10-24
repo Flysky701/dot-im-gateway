@@ -26,7 +26,7 @@
 
 运行 `dot-im-connect --self-test` 只验证内置运行时、SQLite、官方客户端能启动及临时目录清理，不连接账号。
 
-Windows 使用 FlClash/Mihomo 等 Fake-IP 代理时，系统可能把官方接口解析到 `198.18.x.x`，程序会报 `non_public_destination`。可用 `dot-im-connect-win32-x64.exe --public-dns` 显式启用本进程的阿里公共 DNS HTTPS 解析；只向解析服务发送目标域名，不发送账号凭据。系统代理、DNS 设置和 Server3 不变，公网地址检查、目标域名白名单及 TLS 验证仍保持开启。默认启动仍使用系统 DNS。
+Windows 使用 FlClash/Mihomo 等 Fake-IP 代理时，系统可能把官方接口解析到 `198.18.x.x`，程序会报 `non_public_destination`。可用 `dot-im-connect-win32-x64.exe --public-dns` 显式启用本进程的阿里公共 DNS HTTPS 解析；只向解析服务发送目标域名，不发送账号凭据。不修改系统代理或 DNS 设置，公网地址检查、目标域名白名单及 TLS 验证仍保持开启。默认启动仍使用系统 DNS。
 
 ## 一次性连接
 
@@ -63,8 +63,6 @@ QQ 扫码通过固定的[官方 connector 1.2.0](https://www.npmjs.com/package/@
 该 SDK 元数据为 UNLICENSED，不属于本项目 MIT 许可范围；保留原来源和声明，不将它重新许可为 MIT。**公开发布包含该 SDK 的二进制前，维护者需自行确认再分发许可**，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 一次运行连接一个渠道；同一用户同时只允许一个连接程序实例。一次性模式只接收本人文字并原会话回复，附件、Events 和主动发送均不开放；常驻服务的完整能力见 [README](../README.md)。官方客户端 `/readyz` 成功只代表客户端就绪，不能证明原 dot 已读取或手机已收到。突然断电或 SIGKILL 无法保证一次性模式的临时数据清理。
-
-新的扫码包装和 handoff 移交已通过离线/合成测试，尚待真人验收。
 
 ## 维护者构建（用户不需要）
 

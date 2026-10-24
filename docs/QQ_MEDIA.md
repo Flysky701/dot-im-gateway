@@ -40,22 +40,3 @@ PNG/JPEG/PDF 沿用现有字节签名检测，不能只靠文件扩展名或上�
 适配器先调用本人 `/v2/users/<owner>/files`，提交 `file_data` Base64、`file_name`、`srv_send_msg=false`。PNG/JPEG 用 `file_type=1`，PDF、文本和其他普通文件用 `file_type=4`。得到 `file_info` 后，仅向同一个本人发送 `msg_type=7` 和 `media.file_info`。不创建临时公开文件站点，不自动把上传失败改成发送外部 URL。
 
 上传本身不发送聊天消息，因此网络或 5xx 上传失败允许重试；真正 `/messages` 请求的结果不确定时仍进入 `uncertain`，不能盲目重发。最终回复没有 ack 时使用 `msg_seq=1`，有已接受的 ack 时用 2。平台 `accepted` 只证明平台接受请求，手机收件仍需本人确认。
-
-## 内部接口
-
-- `new QQ(config,store,send,clock,media)`：第五参数可选；未提供时保持文字测试边界。
-- `normalize(raw)`：纯文字同步返回；有附件时返回 Promise。
-- `Media.putQQ(messageId,bytes,mime,name)`：QQ 普通文件入口。原 `Media.put` 保持微信图片/PDF限制。
-- `Media.inspect(id,messageId)`：上述只读元信息与有限预览。
-- `sendReply(m,r)`：支持 `r.seq`（1 或 2）；缺省时查询本条消息已接受的 ack。可用 `m.media_message_id` 指定附件原所属消息，缺省使用 `m.id`；此字段由服务端已授权消息路由生成。
-
-## 参考与验证
-
-本实现独立编写，没有复制上游代码，也没有引入其文件路径、任意 URL、语音转码或外部模型调用能力。
-
-- 腾讯官方 [qqbot-nodejs media.ts](https://github.com/tencent-connect/qqbot-nodejs/blob/429a0f1b798f3b0fcef3679e207dbc0469a1df2d/src/protocol/api/media.ts)：参考先上传文件、再发送富媒体消息的协议字段。固定 commit `429a0f1b798f3b0fcef3679e207dbc0469a1df2d`。
-- [Hermes QQ adapter](https://github.com/NousResearch/hermes-agent/blob/75c4483e3b126476b1d5bb078369824d343a1639/plugins/platforms/qqbot/adapter.py)：参考 MIME 前缀分类、附件缓存及 QQ CDN 鉴权经验。固定 commit `75c4483e3b126476b1d5bb078369824d343a1639`；本实现不采用其向所有附件 URL 传授权的行为。
-- 腾讯官方 [qqbot-agent-sdk attachment.py](https://github.com/tencent-connect/qqbot-agent-sdk/blob/6163b5dc979a2f12379b1916805009075008c3c3/src/qqbot_agent_sdk/attachment.py)：该版本下载只提供普通请求头，说明不能把 Hermes 的行为当作所有 QQ CDN 均要求鉴权的保证。
-- 腾讯官方仓库 [dsh-qqbot issue #8](https://github.com/tencent-connect/dsh-qqbot/issues/8)：真实入站附件示例使用 `image/jpeg` MIME 和 `multimedia.nt.qq.com.cn/download`；不把 `content_type` 误认成只有 `image`/`file` 两种字符串。
-
-定向离线测试覆盖附件单独到达、正文保留、混合成功失败、文件检查、路径/域名/公共地址边界、一次精确鉴权回退、重定向拒绝、先上传后发送、回复序号和结果不确定。测试不访问真实 QQ，不发送真人消息、不调用付费 API。真人验收应由本人向已绑定 QQ 发送一个小 TXT、PNG、PDF，查看文件元信息并回传一个文件，分别记录平台接受与手机收到；尚未完成本项目这一轮真人验收。
