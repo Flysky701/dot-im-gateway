@@ -47,7 +47,7 @@ python3 scripts/deploy.py install --prefix "$HOME/.local/lib/dot-im-gateway" --a
 
 - QQ：填入 bot `appId`、本人 `ownerId=user_openid`、secret 的环境变量名。官方文档配置使用 `apiProfile=documented`；已批准且与 SDK 端点契约匹配时可选 `tencent-sdk`。从实际官方 Gateway discovery 核实 WSS hostname 后填精确 `gatewayHosts`；不得用通配符或猜测域名。
 - 微信：填入 `ownerId=ilink_user_id`、`botId=ilink_bot_id` 和 token 环境变量名。API 默认 `ilinkai.weixin.qq.com`，CDN 默认 `novac2c.cdn.weixin.qq.com`；如官方返回新 API host，单独核实其腾讯域名和授权范围再改配置。没有可核实稳定 ID 就停在本关，不能用昵称、头像或“第一条消息是谁”自动绑定。
-- QQ 扫码由单文件程序内置的腾讯官方 `@tencent-connect/qqbot-connector@1.2.0` 完成（UNLICENSED，见[第三方声明](../THIRD_PARTY_NOTICES.md)）；常驻服务本身不安装它。handoff 会自动填入上述 ID 和 `gatewayHosts`（`api.bot.qq.com`、`api.sgroup.qq.com`）。
+- QQ 扫码由单文件程序内置的腾讯官方 `@tencent-connect/qqbot-connector@1.2.0` 完成（UNLICENSED，见[第三方声明](THIRD_PARTY_NOTICES.md)）；常驻服务本身不安装它。handoff 会自动填入上述 ID 和 `gatewayHosts`（`api.bot.qq.com`、`api.sgroup.qq.com`）。
 
 ### B. 长期凭据
 

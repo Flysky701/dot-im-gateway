@@ -55,7 +55,7 @@ jobs:
             draft="$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)"
             if [ "$draft" != true ]; then echo "::error::$TAG is already published; bump the version and tag again instead of rebuilding"; exit 1; fi
           else
-            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Source release for $TAG. See README.md for usage and THIRD_PARTY_NOTICES.md for dependency licensing."
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" --notes "Source release for $TAG. See README.md for usage and docs/THIRD_PARTY_NOTICES.md for dependency licensing."
           fi
   build:
     if: github.event_name == 'workflow_dispatch' && inputs.build_binaries

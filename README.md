@@ -42,4 +42,4 @@ https://github.com/Flysky701/dot-im-gateway/blob/v0.1.1/skills/connect-dot-im-ga
 
 ## 文档
 
-[连接与构建](docs/PORTABLE.md) · [服务器部署](docs/DEPLOYMENT.md) · [故障处理](docs/OPERATIONS.md) · [主动通知](docs/NOTIFICATIONS.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
+[连接与构建](docs/PORTABLE.md) · [服务器部署](docs/DEPLOYMENT.md) · [故障处理](docs/OPERATIONS.md) · [主动通知](docs/NOTIFICATIONS.md) · [第三方许可](docs/THIRD_PARTY_NOTICES.md)

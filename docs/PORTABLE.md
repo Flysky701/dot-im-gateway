@@ -60,7 +60,7 @@ ssh -L 127.0.0.1:8789:127.0.0.1:8789 <服务器> '<BIN> --handoff <PREFIX> --por
 
 QQ 扫码通过固定的[官方 connector 1.2.0](https://www.npmjs.com/package/@tencent-connect/qqbot-connector) 公开回调 API 实现；手机页面显示通用「第三方机器人」。二维码只在本机页面展示；取消、过期或两分钟未完成会终止独立 SDK 执行单元，丢弃迟到凭据。程序不创建或替换机器人。
 
-该 SDK 元数据为 UNLICENSED，不属于本项目 MIT 许可范围；保留原来源和声明，不将它重新许可为 MIT。**公开发布包含该 SDK 的二进制前，维护者需自行确认再分发许可**，详见[第三方声明](../THIRD_PARTY_NOTICES.md)。
+该 SDK 元数据为 UNLICENSED，不属于本项目 MIT 许可范围；保留原来源和声明，不将它重新许可为 MIT。**公开发布包含该 SDK 的二进制前，维护者需自行确认再分发许可**，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 一次运行连接一个渠道；同一用户同时只允许一个连接程序实例。一次性模式只接收本人文字并原会话回复，附件、Events 和主动发送均不开放；常驻服务的完整能力见 [README](../README.md)。官方客户端 `/readyz` 成功只代表客户端就绪，不能证明原 dot 已读取或手机已收到。突然断电或 SIGKILL 无法保证一次性模式的临时数据清理。
 

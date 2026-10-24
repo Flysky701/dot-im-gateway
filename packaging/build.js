@@ -22,7 +22,7 @@ fs.writeFileSync(path.join(work,'tunnel.gz'),gzipSync(binary,{level:9}));
 const source=sourceRevision(root);
 const manifest={platform:process.platform,arch:process.arch,node:process.versions.node,tunnelVersion:'0.0.17',tunnelSha256:hash(binary),sourceCommit:source};
 fs.writeFileSync(path.join(work,'manifest.json'),JSON.stringify(manifest));
-const notices=['LICENSE','THIRD_PARTY_NOTICES.md','licenses/qrcode-generator-MIT.txt'].map(x=>fs.readFileSync(path.join(root,x),'utf8'));
+const notices=['LICENSE','docs/THIRD_PARTY_NOTICES.md','licenses/qrcode-generator-MIT.txt'].map(x=>fs.readFileSync(path.join(root,x),'utf8'));
 notices.push('Tencent qqbot-connector 1.2.0 — UNLICENSED; private integration authorized by the project owner. No MIT redistribution grant is asserted.');
 notices.push(fs.readFileSync(path.join(pkg,'node_modules/@tencent-connect/qqbot-connector/package.json'),'utf8'));
 notices.push(fs.readFileSync(path.join(pkg,'node_modules/@tencent-connect/qqbot-connector/README.md'),'utf8'));

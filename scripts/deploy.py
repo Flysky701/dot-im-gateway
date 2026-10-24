@@ -34,7 +34,7 @@ def manifest(source):
             require(not p.is_symlink(), 'source_symlink_denied')
             if p.is_file() and '__pycache__' not in p.parts:
                 files.append(p)
-    for name in ('package.json', 'package-lock.json', 'config.example.json', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'references.lock.json'):
+    for name in ('package.json', 'package-lock.json', 'config.example.json', 'README.md', 'LICENSE', 'docs/THIRD_PARTY_NOTICES.md', 'references.lock.json'):
         p = source / name
         require(p.is_file(), 'incomplete_release_' + name)
         files.append(p)

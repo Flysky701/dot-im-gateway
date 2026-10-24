@@ -122,4 +122,4 @@ python scripts/launch-handoff.py --host <HOST> --connect-binary <ABS_CONNECT_BIN
 
 升级/回滚/卸载沿用[部署手册](../../docs/DEPLOYMENT.md)，保留数据。已授权卸载不重复问；删除重要数据须有覆盖目标和后果的明确批准。维护不自动解除微信绑定、改插件或轮换无关密钥。
 
-交付说明服务器/用户、平台、提交、实际插件名、阶段、linger、Key 到期日、手机实收和恢复入口。更多：[运维](../../docs/OPERATIONS.md)、[单文件程序](../../docs/PORTABLE.md)、[安全边界](../../docs/SECURITY.md)、[第三方声明](../../THIRD_PARTY_NOTICES.md)。
+交付说明服务器/用户、平台、提交、实际插件名、阶段、linger、Key 到期日、手机实收和恢复入口。更多：[运维](../../docs/OPERATIONS.md)、[单文件程序](../../docs/PORTABLE.md)、[安全边界](../../docs/SECURITY.md)、[第三方声明](../../docs/THIRD_PARTY_NOTICES.md)。

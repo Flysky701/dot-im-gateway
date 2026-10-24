@@ -56,4 +56,4 @@ Agent 负责技术操作与排错。项目有**两份 Skill、三种执行模式
 
 简述路线、平台、实际插件名、版本/提交、已完成阶段、手机实收结果、恢复办法及密钥有效期（如有）。平台 `accepted` 仅表示平台接受，不能代替手机确认。阻塞时说明当前阶段、无秘密错误码和具体下一步，不重做已完成的部署/扫码。
 
-QQ 使用打包的腾讯官方 `@tencent-connect/qqbot-connector` 1.2.0，其 UNLICENSED 声明见[第三方声明](../../THIRD_PARTY_NOTICES.md)；不复制私有接口或修改品牌信息。
+QQ 使用打包的腾讯官方 `@tencent-connect/qqbot-connector` 1.2.0，其 UNLICENSED 声明见[第三方声明](../../docs/THIRD_PARTY_NOTICES.md)；不复制私有接口或修改品牌信息。
