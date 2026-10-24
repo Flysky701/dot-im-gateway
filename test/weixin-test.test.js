@@ -23,6 +23,17 @@ test('login fails closed for missing identity, foreign redirect, expired QR, or 
   }
   for(const origin of ['http://ilinkai.weixin.qq.com','https://weixin.qq.com.evil.example','https://127.0.0.1','https://user@ilinkai.weixin.qq.com','https://ilinkai.weixin.qq.com/private','https://ilinkai.weixin.qq.com?x=1'])assert.throws(()=>weixinOrigin(origin));
 });
+
+test('QR login recovers network failures without replacing its QR and respects the deadline',async()=>{
+  const calls=[],events=[];let elapsed=0;
+  const replies=[new Fault('network_before_connect','retry'),{qrcode:'same-qr',qrcode_img_content:'synthetic'},new Fault('network_failure','uncertain'),confirmed];
+  const result=await loginWeixin({emit:e=>events.push(e),verification:()=>assert.fail(),clock:()=>elapsed,delay:async ms=>{elapsed+=ms;},send:async url=>{calls.push(url);const r=replies.shift();if(r instanceof Fault)throw r;return response(r);}});
+  assert.equal(result.ownerId,confirmed.ilink_user_id);assert.equal(events.filter(e=>e.stage==='qr').length,1);
+  assert.equal(calls[2],calls[3]);assert.equal(elapsed,4000);
+  elapsed=0;
+  await assert.rejects(loginWeixin({emit:()=>{},clock:()=>elapsed,delay:async ms=>{elapsed+=ms;},send:async()=>{throw new Fault('network_failure','retry');}}),/weixin_login_timeout/);
+  assert.equal(elapsed,300000);
+});
 test('only four Weixin text tools; no QQ, media, recipient override or event tools',async t=>{
   const f=fixture(t),rpc=new WeixinTestRPC(f.core),m=await accept(f,'weixin');
   const list=await rpc.dispatch('tools/list',{});assert.equal(list.tools.length,4);assert.equal(list.tools.find(x=>x.name==='reply').inputSchema.properties.media_id,undefined);

@@ -11,6 +11,7 @@ import {RPC,tools,VERSION,makeServer} from './server.js';
 
 const initial='https://ilinkai.weixin.qq.com';
 const appHeaders={'iLink-App-Id':'bot','iLink-App-ClientVersion':String((2<<16)|(4<<8)|10)};
+const transientReadErrors=new Set(['network_failure','network_before_connect','dns_timeout','public_dns_failed','response_interrupted','weixin_rate_limit','weixin_server_error']);
 export function weixinOrigin(raw){
   let u;try{u=new URL(raw);}catch{throw new Fault('weixin_origin_denied');}
   ensure(/^(?:[a-z0-9-]+\.)+weixin\.qq\.com$/.test(u.hostname)&&u.pathname==='/'&&!u.search,'weixin_origin_denied');
@@ -37,14 +38,29 @@ function wait(ms,signal){return new Promise((resolve,reject)=>{
 });}
 export async function loginWeixin({send=request,emit,verification,signal,clock=()=>performance.now(),delay=wait}={}){
   const deadline=clock()+300000;let origin=initial,code='',verify='',attempts=0;
+  // QR issuance/status are login reads, never message sends. Keep the same QR
+  // while a status request times out; all retries remain inside its login window.
+  const loginRequest=async(url,options={})=>{
+    let failures=0;
+    for(;;){
+      try{return await jsonRequest(send,url,{...options,signal});}
+      catch(e){
+        if(signal?.aborted||!(e instanceof Fault)||!transientReadErrors.has(e.code))throw e;
+        const remaining=deadline-clock();ensure(remaining>0,'weixin_login_timeout');
+        emit({stage:'progress',phase:'weixin_reconnecting'});
+        await delay(Math.min(remaining,30000,1000*2**Math.min(++failures,5)),signal);
+        ensure(clock()<deadline,'weixin_login_timeout');
+      }
+    }
+  };
   try{
     emit({stage:'progress',phase:'weixin_qr_request'});
-    const qr=await jsonRequest(send,initial+'/ilink/bot/get_bot_qrcode?bot_type=3',{body:{local_token_list:[]},signal});
+    const qr=await loginRequest(initial+'/ilink/bot/get_bot_qrcode?bot_type=3',{body:{local_token_list:[]}});
     code=str(qr.qrcode,4096);str(qr.qrcode_img_content,2048);
     // Pipe event consumed only by the user's TTY renderer, never a log or MCP.
     emit({stage:'qr',content:qr.qrcode_img_content});
     while(clock()<deadline&&!signal?.aborted){
-      const data=await jsonRequest(send,origin+'/ilink/bot/get_qrcode_status?qrcode='+encodeURIComponent(code)+(verify?'&verify_code='+encodeURIComponent(verify):''),{signal});
+      const data=await loginRequest(origin+'/ilink/bot/get_qrcode_status?qrcode='+encodeURIComponent(code)+(verify?'&verify_code='+encodeURIComponent(verify):''));
       if(data.status==='confirmed'){
         str(data.bot_token,4096);ensure(data.bot_token.length>=16&&!/[\r\n]/.test(data.bot_token),'weixin_invalid_credentials');
         str(data.ilink_bot_id,256);str(data.ilink_user_id,256);
@@ -118,7 +134,6 @@ export async function runWeixinTest(input,{emit,commands,signal,send=request,clo
       let failures=0;
       // getupdates is a read: retry from the stored cursor without dropping the
       // in-memory login. Reply sends retain Core's separate uncertainty rules.
-      const transient=new Set(['network_failure','network_before_connect','dns_timeout','public_dns_failed','response_interrupted','weixin_rate_limit','weixin_server_error']);
       while(active()){
         try{
           await wx.poll();
@@ -126,7 +141,7 @@ export async function runWeixinTest(input,{emit,commands,signal,send=request,clo
           failures=0;
         }catch(e){
           if(!active())break;
-          if(!(e instanceof Fault)||!transient.has(e.code))throw e;
+          if(!(e instanceof Fault)||!transientReadErrors.has(e.code))throw e;
           failures++;
           emit({stage:'progress',phase:'weixin_reconnecting'});
         }
