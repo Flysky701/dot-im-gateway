@@ -83,7 +83,7 @@ export class WeixinTestRPC{
   }
 }
 
-export async function runWeixinTest(input,{emit,commands,signal,send=request,clock=()=>performance.now(),wall=Date.now,login=loginWeixin,untilStopped=false,onBound=null}={}){
+export async function runWeixinTest(input,{emit,commands,signal,send=request,clock=()=>performance.now(),wall=Date.now,login=loginWeixin,untilStopped=false,onBound=null,delay=wait}={}){
   exact(input,['bearer','dataDir','maximumSeconds']);str(input.dataDir,2048);str(input.bearer,1024);ensure(input.bearer.length>=32&&!/[\r\n]/.test(input.bearer),'invalid_secret_shape');
   ensure((untilStopped&&input.maximumSeconds===0)||(Number.isInteger(input.maximumSeconds)&&input.maximumSeconds>0&&input.maximumSeconds<=1800),'invalid_test_duration');
   const abort=new AbortController(),end=input.maximumSeconds===0?Infinity:clock()+input.maximumSeconds*1000;let credentials,store,server,core,polling,working,interval,verifyResolve,verifyReject,stopped=false,resolveStop;
@@ -114,7 +114,25 @@ export async function runWeixinTest(input,{emit,commands,signal,send=request,clo
     core=new Core(store,c,null,{weixin:wx},wall);server=makeServer(new WeixinTestRPC(core,active),input.bearer);server.on('error',fail);
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
     ensure(active(),'test_session_expired');emit({stage:'gateway_ready',url:`http://127.0.0.1:${server.address().port}/mcp`});
-    polling=(async()=>{while(active()){await wx.poll();await wait(1000,abort.signal);}})().catch(fail);
+    polling=(async()=>{
+      let failures=0;
+      // getupdates is a read: retry from the stored cursor without dropping the
+      // in-memory login. Reply sends retain Core's separate uncertainty rules.
+      const transient=new Set(['network_failure','network_before_connect','dns_timeout','public_dns_failed','response_interrupted','weixin_rate_limit','weixin_server_error']);
+      while(active()){
+        try{
+          await wx.poll();
+          if(failures)emit({stage:'progress',phase:'weixin_polling'});
+          failures=0;
+        }catch(e){
+          if(!active())break;
+          if(!(e instanceof Fault)||!transient.has(e.code))throw e;
+          failures++;
+          emit({stage:'progress',phase:'weixin_reconnecting'});
+        }
+        if(active())await delay(Math.min(30000,1000*2**Math.min(failures,5)),abort.signal);
+      }
+    })().catch(fail);
     interval=setInterval(()=>{if(active()&&!working)working=core.tick().catch(fail).finally(()=>{working=null;});},100);
     await stopping;
   }catch(e){fail(e);}finally{

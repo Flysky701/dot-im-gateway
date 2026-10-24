@@ -112,6 +112,10 @@ function paint(s) {
   $('#instruction').textContent = s.stage === 'qq_app_confirm'
     ? 'AppID：' + (s.appId || '')
     : (instructions[s.stage] ?? '');
+  if (s.stage === 'connected' && s.phase === 'weixin_reconnecting') {
+    $('#step').textContent = '微信连接恢复中';
+    $('#instruction').textContent = '网络暂时中断，正在自动重试收信。请保持程序运行，无需重新扫码。';
+  }
 
   $('#approve-app').hidden = s.stage !== 'qq_app_confirm';
   appConfirmation = s.stage === 'qq_app_confirm' ? (s.confirmation || '') : '';

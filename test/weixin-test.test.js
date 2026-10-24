@@ -6,6 +6,7 @@ import path from 'node:path';
 import {loginWeixin,weixinOrigin,WeixinTestRPC,runWeixinTest} from '../src/weixin-private-session.js';
 import {fixture,response,wxRaw,now,accept} from './helpers.js';
 import {VERSION} from '../src/server.js';
+import {Fault} from '../src/util.js';
 
 const confirmed={status:'confirmed',bot_token:'synthetic-only-token-00000000000000',ilink_bot_id:'wx-bot',ilink_user_id:'wx-owner-stable',baseurl:'https://ilinkai.weixin.qq.com'};
 test('official QR POST, hidden verification, redirect, confirmed identity; never first message',async()=>{
@@ -56,4 +57,39 @@ test('deadline aborts QR wait without creating data or listener',async t=>{
   const f=fixture(t),dir=path.join(f.dir,'no-bind'),commands=new EventEmitter(),events=[];
   await runWeixinTest({bearer:'b'.repeat(40),dataDir:dir,maximumSeconds:1},{commands,emit:e=>events.push(e),login:async({signal})=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(new Error('abort')),{once:true}))});
   assert.equal(fs.existsSync(dir),false);assert.ok(!events.some(e=>e.stage==='gateway_ready'));
+});
+
+test('temporary Weixin retries transient polling failures, retains cursor, receives once and stops promptly',async t=>{
+  const f=fixture(t),commands=new EventEmitter(),events=[],backoffs=[],cursors=[];
+  const credential={token:confirmed.bot_token,ownerId:confirmed.ilink_user_id,botId:confirmed.ilink_bot_id,origin:confirmed.baseurl};
+  const token='r'.repeat(40);let polls=0,readyResolve;
+  const ready=new Promise(r=>{readyResolve=r;});
+  const running=runWeixinTest({bearer:token,dataDir:path.join(f.dir,'retry-session'),maximumSeconds:5},{commands,wall:()=>now,login:async()=>credential,
+    emit:e=>{events.push(e);if(e.stage==='gateway_ready')readyResolve(e.url);},
+    delay:async ms=>{backoffs.push(ms);await new Promise(r=>setTimeout(r,20));},
+    send:async(url,o)=>{
+      assert.ok(url.endsWith('getupdates'));assert.equal(o.headers.Authorization,'Bearer '+confirmed.bot_token);
+      cursors.push(JSON.parse(o.body).get_updates_buf);polls++;
+      if(polls===2)throw new Fault('network_failure','uncertain');
+      if(polls===3)throw new Fault('public_dns_failed','retry');
+      return response({ret:0,msgs:polls>=4?[wxRaw()]:[],get_updates_buf:'saved-cursor'});
+    }});
+  const url=await ready;let messages=[];
+  try{
+    for(let i=0;i<40&&!messages.length;i++){const r=await call(url,token,'list_pending');messages=r.result.structuredContent.messages;await new Promise(r=>setTimeout(r,20));}
+    assert.equal(messages.length,1);assert.deepEqual(cursors.slice(0,4),['','saved-cursor','saved-cursor','saved-cursor']);
+    assert.deepEqual(backoffs.slice(0,4),[1000,2000,4000,1000]);
+    assert.ok(events.some(e=>e.phase==='weixin_reconnecting'));assert.ok(events.some(e=>e.phase==='weixin_polling'));
+    assert.ok(!events.some(e=>e.stage==='failed'));assert.equal(credential.token,confirmed.bot_token);
+  }finally{commands.emit('close');await running;}
+  assert.equal(credential.token,'');await assert.rejects(call(url,token,'gateway_status'));
+});
+
+test('temporary Weixin does not retry revoked sessions or malformed responses',async t=>{
+  for(const code of ['weixin_rejected','weixin_invalid_response','non_public_destination']){
+    const f=fixture(t),events=[];let polls=0;
+    const credential={token:confirmed.bot_token,ownerId:confirmed.ilink_user_id,botId:confirmed.ilink_bot_id,origin:confirmed.baseurl};
+    await runWeixinTest({bearer:'r'.repeat(40),dataDir:path.join(f.dir,'fatal-session'),maximumSeconds:5},{commands:new EventEmitter(),login:async()=>credential,emit:e=>events.push(e),send:async()=>{polls++;throw new Fault(code);},delay:()=>assert.fail('must not retry')});
+    assert.equal(polls,1);assert.ok(events.some(e=>e.stage==='failed'&&e.code===code));assert.equal(credential.token,'');
+  }
 });
